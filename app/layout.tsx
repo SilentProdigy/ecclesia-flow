@@ -1,7 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
+
+import { PWARegister } from "@/components/pwa-register";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -9,8 +11,34 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Next.js and Supabase Starter Kit",
-  description: "The fastest way to build apps with Next.js and Supabase",
+
+  title: {
+    default: "Church Attendance",
+    template: "%s | Church Attendance",
+  },
+
+  description:
+    "Mobile-first church member registration and attendance system.",
+
+  applicationName: "Church Attendance",
+
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Church Attendance",
+  },
+
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0f172a",
 };
 
 const geistSans = Geist({
@@ -35,6 +63,8 @@ export default function RootLayout({
         >
           {children}
         </ThemeProvider>
+
+        <PWARegister />
       </body>
     </html>
   );
