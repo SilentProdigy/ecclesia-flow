@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import {
   CheckCircle2,
+  ChevronRight,
   CircleOff,
   Mail,
   Phone,
@@ -31,18 +34,11 @@ export function MemberCard({
   const fullName =
     getMemberFullName(member);
 
-  const typeLabel =
-    getMemberTypeLabel(
-      member.member_type
-    );
-
-  const faceLabel =
-    getFaceStatusLabel(
-      member.face_status
-    );
-
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <Link
+      href={`/members/${member.id}`}
+      className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+    >
       <div className="flex gap-3">
         <MemberAvatar
           member={member}
@@ -70,27 +66,36 @@ export function MemberCard({
               </p>
             </div>
 
-            {member.status ===
-            "active" ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-                <CheckCircle2
-                  size={12}
-                />
-                Active
-              </span>
-            ) : (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">
-                <CircleOff
-                  size={12}
-                />
-                Inactive
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {member.status ===
+              "active" ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                  <CheckCircle2
+                    size={12}
+                  />
+                  Active
+                </span>
+              ) : (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">
+                  <CircleOff
+                    size={12}
+                  />
+                  Inactive
+                </span>
+              )}
+
+              <ChevronRight
+                size={17}
+                className="text-slate-300"
+              />
+            </div>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700">
-              {typeLabel}
+              {getMemberTypeLabel(
+                member.member_type
+              )}
             </span>
 
             <span
@@ -105,7 +110,10 @@ export function MemberCard({
               }`}
             >
               <ScanFace size={12} />
-              Face: {faceLabel}
+              Face:{" "}
+              {getFaceStatusLabel(
+                member.face_status
+              )}
             </span>
           </div>
 
@@ -115,7 +123,6 @@ export function MemberCard({
               {member.phone && (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <Phone size={13} />
-
                   <span className="truncate">
                     {member.phone}
                   </span>
@@ -125,7 +132,6 @@ export function MemberCard({
               {member.email && (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <Mail size={13} />
-
                   <span className="truncate">
                     {member.email}
                   </span>
@@ -135,6 +141,6 @@ export function MemberCard({
           )}
         </div>
       </div>
-    </article>
+    </Link>
   );
 }

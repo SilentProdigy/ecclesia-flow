@@ -112,3 +112,32 @@ export function getMemberInitials(
 
   return `${first}${last}` || "M";
 }
+
+export function formatMemberDate(
+  value: string | null | undefined
+) {
+  if (!value) {
+    return "Not recorded";
+  }
+
+  const [year, month, day] =
+    value.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return "Not recorded";
+  }
+
+  const date = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "UTC",
+    }
+  ).format(date);
+}
