@@ -2,37 +2,36 @@ import Link from "next/link";
 
 import {
   ArrowLeft,
-  UserRoundPlus,
 } from "lucide-react";
+
+import {
+  MemberForm,
+} from "@/components/members/member-form";
 
 export default function NewMemberPage() {
   return (
-    <div className="mx-auto w-full max-w-lg px-4 py-6">
+    <div className="mx-auto w-full max-w-2xl px-4 py-6">
       <Link
         href="/members"
-        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-950"
+        className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-950"
       >
         <ArrowLeft size={17} />
-        Members
+        Back to Members
       </Link>
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-          <UserRoundPlus
-            size={26}
-            className="text-slate-700"
-          />
-        </div>
-
-        <h1 className="mt-4 text-xl font-bold text-slate-950">
-          Add Member
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-950">
+          Register Member
         </h1>
 
-        <p className="mt-2 text-sm leading-6 text-slate-500">
-          The member registration form
-          will be added in step #25.
+        <p className="mt-1 text-sm leading-6 text-slate-500">
+          Add a member, regular
+          attendee, or visitor to
+          Ecclesia Flow.
         </p>
       </div>
+
+      <MemberForm />
     </div>
   );
 }

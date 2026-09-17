@@ -28,9 +28,9 @@ export const faceStatusSchema =
 
 /**
  * Converts:
- * "" → null
- * "   " → null
- * undefined → null
+ * "" -> null
+ * "   " -> null
+ * undefined -> null
  */
 function optionalText(maxLength: number) {
   return z
@@ -46,8 +46,7 @@ function optionalText(maxLength: number) {
 }
 
 /**
- * Validates YYYY-MM-DD without allowing invalid dates
- * such as 2026-02-31.
+ * Validates a real YYYY-MM-DD date.
  */
 const dateStringSchema = z
   .string()
@@ -91,8 +90,11 @@ const optionalEmailSchema = z
     z
       .string()
       .trim()
-      .email("Please enter a valid email address.")
+      .email(
+        "Please enter a valid email address."
+      )
       .max(254),
+
     z.literal(""),
     z.null(),
     z.undefined(),
@@ -122,6 +124,7 @@ const optionalPhoneSchema = z
         /^[0-9+\-()\s.]+$/,
         "Please enter a valid phone number."
       ),
+
     z.literal(""),
     z.null(),
     z.undefined(),
@@ -135,85 +138,184 @@ const optionalPhoneSchema = z
   });
 
 /**
- * This schema represents fields staff are allowed
- * to submit when creating or editing a member.
+ * Base object.
  *
- * Database-controlled fields such as:
+ * IMPORTANT:
+ * Do not put .refine() / .superRefine()
+ * directly on this schema.
  *
- * id
- * member_no
- * photo_path
- * face_status
- * created_by
- * updated_by
- * created_at
- * updated_at
- *
- * are intentionally excluded.
+ * We need the raw object so we can safely call
+ * .partial() for the Edit Member schema.
  */
-export const memberFormSchema = z.object({
+const memberFormBaseSchema = z.object({
   first_name: z
     .string()
     .trim()
-    .min(1, "First name is required.")
+    .min(
+      1,
+      "First name is required."
+    )
     .max(
       100,
       "First name cannot exceed 100 characters."
     ),
 
-  middle_name: optionalText(100),
+  middle_name:
+    optionalText(100),
 
   last_name: z
     .string()
     .trim()
-    .min(1, "Last name is required.")
+    .min(
+      1,
+      "Last name is required."
+    )
     .max(
       100,
       "Last name cannot exceed 100 characters."
     ),
 
-  suffix: optionalText(30),
+  suffix:
+    optionalText(30),
 
-  preferred_name: optionalText(100),
+  preferred_name:
+    optionalText(100),
 
-  phone: optionalPhoneSchema,
+  phone:
+    optionalPhoneSchema,
 
-  email: optionalEmailSchema,
+  email:
+    optionalEmailSchema,
 
-  date_of_birth: optionalDateSchema,
+  date_of_birth:
+    optionalDateSchema,
 
-  gender: optionalText(50),
+  gender:
+    optionalText(50),
 
-  address: optionalText(500),
+  address:
+    optionalText(500),
 
   member_type:
-    memberTypeSchema.default("member"),
+    memberTypeSchema,
 
   status:
-    memberStatusSchema.default("active"),
+    memberStatusSchema,
 
-  member_since: optionalDateSchema,
+  member_since:
+    optionalDateSchema,
 
-  first_attended_on: optionalDateSchema,
+  first_attended_on:
+    optionalDateSchema,
 
-  notes: optionalText(2000),
+  notes:
+    optionalText(2000),
 });
 
+interface MemberDateFields {
+  date_of_birth?: string | null;
+  first_attended_on?: string | null;
+  member_since?: string | null;
+}
+
 /**
- * We will use this for Add Member.
+ * Shared cross-field validation.
+ */
+function validateMemberDates(
+  data: MemberDateFields,
+  ctx: z.RefinementCtx
+) {
+  if (
+    data.first_attended_on &&
+    data.member_since &&
+    data.member_since <
+      data.first_attended_on
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["member_since"],
+      message:
+        "Member Since cannot be earlier than First Attended.",
+    });
+  }
+
+  if (
+    data.date_of_birth &&
+    data.first_attended_on &&
+    data.first_attended_on <
+      data.date_of_birth
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["first_attended_on"],
+      message:
+        "First Attended cannot be earlier than the person's birth date.",
+    });
+  }
+
+  if (
+    data.date_of_birth &&
+    data.member_since &&
+    data.member_since <
+      data.date_of_birth
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["member_since"],
+      message:
+        "Member Since cannot be earlier than the person's birth date.",
+    });
+  }
+}
+
+/**
+ * Full Add Member form schema.
+ *
+ * Defaults belong here rather than on the
+ * base schema because Edit Member will use
+ * partial updates.
+ */
+export const memberFormSchema =
+  memberFormBaseSchema
+    .extend({
+      member_type:
+        memberTypeSchema.default(
+          "member"
+        ),
+
+      status:
+        memberStatusSchema.default(
+          "active"
+        ),
+    })
+    .superRefine(
+      validateMemberDates
+    );
+
+/**
+ * Add Member.
  */
 export const createMemberSchema =
   memberFormSchema;
 
 /**
- * We will use this for Edit Member.
+ * Edit Member.
+ *
+ * We call .partial() BEFORE adding the
+ * refinement, which fixes your runtime error.
  */
 export const updateMemberSchema =
-  memberFormSchema.partial();
+  memberFormBaseSchema
+    .partial()
+    .superRefine(
+      validateMemberDates
+    );
 
 /**
- * Useful later for route params.
+ * Route parameter validation.
  */
 export const memberIdSchema = z
   .string()
-  .uuid("Invalid member ID.");
+  .uuid(
+    "Invalid member ID."
+  );

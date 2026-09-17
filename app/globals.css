@@ -104,3 +104,15 @@ select {
 .safe-area-top {
   padding-top: env(safe-area-inset-top);
 }
+
+input,
+textarea,
+select {
+  color: #000;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #000;
+  opacity: 1;
+}

@@ -43,7 +43,7 @@ export default async function SettingsPage() {
               Role
             </span>
 
-            <span className="text-sm font-medium capitalize">
+            <span className="text-sm font-medium capitalize text-black">
               {profile?.role ?? "staff"}
             </span>
           </div>
@@ -53,7 +53,7 @@ export default async function SettingsPage() {
               Status
             </span>
 
-            <span className="text-sm font-medium">
+            <span className="text-sm font-medium text-black">
               {profile?.is_active ? "Active" : "Inactive"}
             </span>
           </div>
