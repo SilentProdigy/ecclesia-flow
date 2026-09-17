@@ -3,12 +3,27 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { createMemberSchema } from "@/lib/members";
+
+import {
+  createMemberSchema,
+  memberIdSchema,
+  updateMemberSchema,
+} from "@/lib/members";
 
 export interface CreatedMemberResult {
   id: string;
   member_no: number;
 }
+
+export type MemberActionResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      message: string;
+      fieldErrors?: Record<string, string[]>;
+    };
 
 export type CreateMemberActionResult =
   | {
@@ -46,6 +61,53 @@ function collectFieldErrors(
   return errors;
 }
 
+async function getAuthenticatedStaff() {
+  const supabase = await createClient();
+
+  const { data: claimsData } =
+    await supabase.auth.getClaims();
+
+  const userId =
+    claimsData?.claims?.sub;
+
+  if (!userId) {
+    return {
+      supabase,
+      allowed: false as const,
+      message:
+        "Your session has expired. Please sign in again.",
+    };
+  }
+
+  const {
+    data: profile,
+    error,
+  } = await supabase
+    .from("profiles")
+    .select("id, is_active")
+    .eq("id", userId)
+    .single();
+
+  if (
+    error ||
+    !profile ||
+    !profile.is_active
+  ) {
+    return {
+      supabase,
+      allowed: false as const,
+      message:
+        "Your staff account is not allowed to perform this action.",
+    };
+  }
+
+  return {
+    supabase,
+    allowed: true as const,
+    userId,
+  };
+}
+
 export async function createMemberAction(
   input: unknown
 ): Promise<CreateMemberActionResult> {
@@ -63,47 +125,20 @@ export async function createMemberAction(
     };
   }
 
-  const supabase = await createClient();
+  const auth =
+    await getAuthenticatedStaff();
 
-  const { data: claimsData } =
-    await supabase.auth.getClaims();
-
-  const userId =
-    claimsData?.claims?.sub;
-
-  if (!userId) {
+  if (!auth.allowed) {
     return {
       success: false,
-      message:
-        "Your session has expired. Please sign in again.",
-    };
-  }
-
-  const {
-    data: profile,
-    error: profileError,
-  } = await supabase
-    .from("profiles")
-    .select("id, is_active")
-    .eq("id", userId)
-    .single();
-
-  if (
-    profileError ||
-    !profile ||
-    !profile.is_active
-  ) {
-    return {
-      success: false,
-      message:
-        "Your staff account is not allowed to register members.",
+      message: auth.message,
     };
   }
 
   const {
     data: member,
     error,
-  } = await supabase
+  } = await auth.supabase
     .from("members")
     .insert(parsed.data)
     .select("id, member_no")
@@ -127,5 +162,95 @@ export async function createMemberAction(
   return {
     success: true,
     member,
+  };
+}
+
+export async function updateMemberAction(
+  memberId: string,
+  input: unknown
+): Promise<MemberActionResult> {
+  const parsedId =
+    memberIdSchema.safeParse(memberId);
+
+  if (!parsedId.success) {
+    return {
+      success: false,
+      message: "Invalid member ID.",
+    };
+  }
+
+  const parsed =
+    updateMemberSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        "Please check the highlighted fields.",
+      fieldErrors: collectFieldErrors(
+        parsed.error.issues
+      ),
+    };
+  }
+
+  const auth =
+    await getAuthenticatedStaff();
+
+  if (!auth.allowed) {
+    return {
+      success: false,
+      message: auth.message,
+    };
+  }
+
+  const {
+    data: existingMember,
+    error: memberError,
+  } = await auth.supabase
+    .from("members")
+    .select("id")
+    .eq("id", parsedId.data)
+    .maybeSingle();
+
+  if (
+    memberError ||
+    !existingMember
+  ) {
+    return {
+      success: false,
+      message:
+        "The member could not be found.",
+    };
+  }
+
+  const { error } =
+    await auth.supabase
+      .from("members")
+      .update(parsed.data)
+      .eq("id", parsedId.data);
+
+  if (error) {
+    console.error(
+      "Member update failed:",
+      error
+    );
+
+    return {
+      success: false,
+      message:
+        "Unable to update the member. Please try again.",
+    };
+  }
+
+  revalidatePath("/members");
+  revalidatePath(
+    `/members/${parsedId.data}`
+  );
+  revalidatePath(
+    `/members/${parsedId.data}/edit`
+  );
+
+  return {
+    success: true,
   };
 }

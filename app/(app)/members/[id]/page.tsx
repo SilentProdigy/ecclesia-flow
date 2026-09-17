@@ -14,6 +14,7 @@ import {
   Phone,
   ScanFace,
   UserRound,
+  CheckCircle2,
 } from "lucide-react";
 
 import {
@@ -38,12 +39,23 @@ interface MemberProfilePageProps {
   params: Promise<{
     id: string;
   }>;
+
+  searchParams: Promise<{
+    updated?: string;
+  }>;
 }
 
 export default async function MemberProfilePage({
   params,
+  searchParams,
 }: MemberProfilePageProps) {
   const { id } = await params;
+
+  const query =
+  await searchParams;
+
+const wasUpdated =
+  query.updated === "1";
 
   const result =
     await getMemberProfile(id);
@@ -70,6 +82,13 @@ export default async function MemberProfilePage({
         <ArrowLeft size={17} />
         Back to Members
       </Link>
+
+      {wasUpdated && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            <CheckCircle2 size={18} />
+            Member updated successfully.
+        </div>
+        )}
 
       {/* Profile Header */}
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

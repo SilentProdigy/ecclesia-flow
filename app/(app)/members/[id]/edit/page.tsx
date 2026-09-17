@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 
 import {
   ArrowLeft,
-  Edit3,
 } from "lucide-react";
 
 import {
@@ -11,8 +10,13 @@ import {
 } from "@/lib/members/member-profile.server";
 
 import {
+  formatMemberNumber,
   getMemberFullName,
 } from "@/lib/members";
+
+import {
+  MemberEditForm,
+} from "@/components/members/member-edit-form";
 
 interface EditMemberPageProps {
   params: Promise<{
@@ -32,40 +36,45 @@ export default async function EditMemberPage({
     notFound();
   }
 
-  const name =
-    getMemberFullName(
-      result.member
-    );
+  const {
+    member,
+    photoUrl,
+  } = result;
 
   return (
-    <div className="mx-auto w-full max-w-lg px-4 py-6">
+    <div className="mx-auto w-full max-w-2xl px-4 py-6">
       <Link
         href={`/members/${id}`}
-        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-950"
+        className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-950"
       >
         <ArrowLeft size={17} />
         Back to Profile
       </Link>
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-          <Edit3
-            size={26}
-            className="text-slate-700"
-          />
-        </div>
+      <div className="mb-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          {formatMemberNumber(
+            member.member_no
+          )}
+        </p>
 
-        <h1 className="mt-4 text-xl font-bold text-slate-950">
-          Edit {name}
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+          Edit{" "}
+          {getMemberFullName(
+            member
+          )}
         </h1>
 
-        <p className="mt-2 text-sm leading-6 text-slate-500">
-          Member editing and
-          active/inactive management
-          will be implemented in
-          step #27.
+        <p className="mt-1 text-sm text-slate-500">
+          Update member information,
+          status and profile photo.
         </p>
       </div>
+
+      <MemberEditForm
+        member={member}
+        photoUrl={photoUrl}
+      />
     </div>
   );
 }
