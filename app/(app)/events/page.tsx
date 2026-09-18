@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import {
   CalendarDays,
+  CheckCircle2,
   Plus,
 } from "lucide-react";
 
@@ -37,6 +38,7 @@ interface EventsPageProps {
     status?: string;
     recurrence?: string;
     page?: string;
+    created?: string;
   }>;
 }
 
@@ -189,6 +191,9 @@ export default async function EventsPage({
   const page =
     parsePage(params.page);
 
+  const created =
+    params.created === "1";
+
   const [
     directory,
     currentRole,
@@ -241,11 +246,34 @@ export default async function EventsPage({
             href="/events/new"
             className="hidden h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 sm:inline-flex"
           >
-            <Plus size={18} />
+            <Plus
+              size={18}
+            />
             Add Event
           </Link>
         ) : null}
       </div>
+
+      {created ? (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <CheckCircle2
+            size={20}
+            className="mt-0.5 shrink-0 text-emerald-600"
+          />
+
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">
+              Event created
+            </p>
+
+            <p className="mt-0.5 text-sm text-emerald-700">
+              The event and its
+              upcoming sessions
+              are ready.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <EventDirectoryToolbar
         q={q}
@@ -390,7 +418,9 @@ export default async function EventsPage({
           aria-label="Add event"
           className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg transition hover:bg-slate-800 sm:hidden"
         >
-          <Plus size={24} />
+          <Plus
+            size={24}
+          />
         </Link>
       ) : null}
     </div>
