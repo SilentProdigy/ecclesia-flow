@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   MapPin,
+  MonitorSmartphone,
   Play,
   UsersRound,
 } from "lucide-react";
@@ -250,6 +251,17 @@ export default async function AttendanceSessionPage({
       {session.status ===
         "open" && (
         <>
+          <Link
+            href={`/kiosk/${session.id}`}
+            className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <MonitorSmartphone
+              size={18}
+            />
+
+            Enter Kiosk Mode
+          </Link>
+
           <div className="mt-5">
             <AttendanceWorkspace
               sessionId={
