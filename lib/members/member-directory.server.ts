@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
 import type {
+  FaceEnrollmentStatus,
   MemberListItem,
   MemberStatus,
   MemberType,
@@ -14,8 +15,15 @@ export const MEMBER_DIRECTORY_PAGE_SIZE = 20;
 
 export interface MemberDirectoryFilters {
   q?: string;
+
   type?: MemberType | "all";
+
   status?: MemberStatus | "all";
+
+  face?:
+    | FaceEnrollmentStatus
+    | "all";
+
   page?: number;
 }
 
@@ -24,19 +32,36 @@ export interface MemberDirectoryItem
   photo_url: string | null;
 }
 
+export interface MemberDirectoryStats {
+  total: number;
+
+  member: number;
+  regular_attendee: number;
+  visitor: number;
+
+  active: number;
+  inactive: number;
+
+  face_not_enrolled: number;
+  face_enrolled: number;
+  face_disabled: number;
+
+  needs_face_enrollment: number;
+}
+
 export interface MemberDirectoryResult {
   members: MemberDirectoryItem[];
+
+  stats: MemberDirectoryStats;
+
   page: number;
   pageSize: number;
+
   resultCount: number;
   totalMembers: number;
   totalPages: number;
 }
 
-/**
- * Strip characters that could interfere with
- * PostgREST's filter syntax.
- */
 function sanitizeSearch(value: string) {
   return value
     .normalize("NFKC")
@@ -53,10 +78,14 @@ function getMemberNumberSearch(
   search: string
 ) {
   const ecclesiaNumber =
-    search.match(/^EC-(\d+)$/i);
+    search.match(
+      /^EC-(\d+)$/i
+    );
 
   if (ecclesiaNumber) {
-    return Number(ecclesiaNumber[1]);
+    return Number(
+      ecclesiaNumber[1]
+    );
   }
 
   if (/^\d+$/.test(search)) {
@@ -71,18 +100,28 @@ export async function getMemberDirectory(
 ): Promise<MemberDirectoryResult> {
   const supabase = await createClient();
 
+  const requestedPage =
+    filters.page ?? 1;
+
   const page =
-    Number.isFinite(filters.page) &&
-    (filters.page ?? 1) > 0
-      ? Math.floor(filters.page ?? 1)
+    Number.isFinite(requestedPage) &&
+    requestedPage > 0
+      ? Math.floor(requestedPage)
       : 1;
 
-  const type = filters.type ?? "all";
-  const status = filters.status ?? "all";
+  const type =
+    filters.type ?? "all";
 
-  const search = sanitizeSearch(
-    filters.q ?? ""
-  );
+  const status =
+    filters.status ?? "all";
+
+  const face =
+    filters.face ?? "all";
+
+  const search =
+    sanitizeSearch(
+      filters.q ?? ""
+    );
 
   const start =
     (page - 1) *
@@ -92,17 +131,6 @@ export async function getMemberDirectory(
     start +
     MEMBER_DIRECTORY_PAGE_SIZE -
     1;
-
-  /*
-   * Overall member total, regardless of current
-   * filters.
-   */
-  const totalRequest = supabase
-    .from("members")
-    .select("id", {
-      count: "exact",
-      head: true,
-    });
 
   let query = supabase
     .from("members")
@@ -141,31 +169,48 @@ export async function getMemberDirectory(
     );
   }
 
+  if (face !== "all") {
+    query = query.eq(
+      "face_status",
+      face
+    );
+  }
+
   if (search) {
     const memberNumber =
-      getMemberNumberSearch(search);
-
-    const searchFilters = [
-      `first_name.ilike.*${search}*`,
-      `middle_name.ilike.*${search}*`,
-      `last_name.ilike.*${search}*`,
-      `preferred_name.ilike.*${search}*`,
-      `phone.ilike.*${search}*`,
-      `email.ilike.*${search}*`,
-    ];
+      getMemberNumberSearch(
+        search
+      );
 
     if (
       memberNumber !== null &&
-      Number.isSafeInteger(memberNumber)
+      Number.isSafeInteger(
+        memberNumber
+      )
     ) {
-      searchFilters.push(
-        `member_no.eq.${memberNumber}`
+      query = query.eq(
+        "member_no",
+        memberNumber
       );
-    }
+    } else {
+      const tokens = search
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 5);
 
-    query = query.or(
-      searchFilters.join(",")
-    );
+      for (const token of tokens) {
+        query = query.or(
+          [
+            `first_name.ilike.*${token}*`,
+            `middle_name.ilike.*${token}*`,
+            `last_name.ilike.*${token}*`,
+            `preferred_name.ilike.*${token}*`,
+            `phone.ilike.*${token}*`,
+            `email.ilike.*${token}*`,
+          ].join(",")
+        );
+      }
+    }
   }
 
   query = query
@@ -178,26 +223,145 @@ export async function getMemberDirectory(
     .range(start, end);
 
   const [
-    {
-      count: totalMembers,
-      error: totalError,
-    },
-    {
-      data,
-      count: resultCount,
-      error,
-    },
+    directoryResult,
+
+    totalResult,
+
+    memberCountResult,
+    regularCountResult,
+    visitorCountResult,
+
+    activeCountResult,
+    inactiveCountResult,
+
+    faceNotEnrolledResult,
+    faceEnrolledResult,
+    faceDisabledResult,
+
+    needsFaceEnrollmentResult,
   ] = await Promise.all([
-    totalRequest,
     query,
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      }),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "member_type",
+        "member"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "member_type",
+        "regular_attendee"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "member_type",
+        "visitor"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "status",
+        "active"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "status",
+        "inactive"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "face_status",
+        "not_enrolled"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "face_status",
+        "enrolled"
+      ),
+
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "face_status",
+        "disabled"
+      ),
+
+    /*
+     * Only active people count as currently
+     * needing biometric enrollment.
+     */
+    supabase
+      .from("members")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "status",
+        "active"
+      )
+      .eq(
+        "face_status",
+        "not_enrolled"
+      ),
   ]);
 
-  if (totalError) {
-    console.error(
-      "Unable to count members:",
-      totalError
-    );
-  }
+  const {
+    data,
+    count: resultCount,
+    error,
+  } = directoryResult;
 
   if (error) {
     console.error(
@@ -210,13 +374,80 @@ export async function getMemberDirectory(
     );
   }
 
+  const countResults = [
+    totalResult,
+    memberCountResult,
+    regularCountResult,
+    visitorCountResult,
+    activeCountResult,
+    inactiveCountResult,
+    faceNotEnrolledResult,
+    faceEnrolledResult,
+    faceDisabledResult,
+    needsFaceEnrollmentResult,
+  ];
+
+  countResults.forEach(
+    (result) => {
+      if (result.error) {
+        console.error(
+          "Unable to load member statistics:",
+          result.error
+        );
+      }
+    }
+  );
+
+  const stats: MemberDirectoryStats =
+    {
+      total:
+        totalResult.count ?? 0,
+
+      member:
+        memberCountResult.count ??
+        0,
+
+      regular_attendee:
+        regularCountResult.count ??
+        0,
+
+      visitor:
+        visitorCountResult.count ??
+        0,
+
+      active:
+        activeCountResult.count ??
+        0,
+
+      inactive:
+        inactiveCountResult.count ??
+        0,
+
+      face_not_enrolled:
+        faceNotEnrolledResult.count ??
+        0,
+
+      face_enrolled:
+        faceEnrolledResult.count ??
+        0,
+
+      face_disabled:
+        faceDisabledResult.count ??
+        0,
+
+      needs_face_enrollment:
+        needsFaceEnrollmentResult.count ??
+        0,
+    };
+
   const members =
     (data ?? []) as MemberListItem[];
 
   const photoUrls =
     await getMemberPhotoUrls(
       members.map(
-        (member) => member.photo_path
+        (member) =>
+          member.photo_path
       )
     );
 
@@ -224,14 +455,16 @@ export async function getMemberDirectory(
     members.map((member) => ({
       ...member,
 
-      photo_url: member.photo_path
-        ? photoUrls[
-            member.photo_path
-          ] ?? null
-        : null,
+      photo_url:
+        member.photo_path
+          ? photoUrls[
+              member.photo_path
+            ] ?? null
+          : null,
     }));
 
-  const count = resultCount ?? 0;
+  const count =
+    resultCount ?? 0;
 
   const totalPages = Math.max(
     1,
@@ -242,13 +475,22 @@ export async function getMemberDirectory(
   );
 
   return {
-    members: directoryMembers,
+    members:
+      directoryMembers,
+
+    stats,
+
     page,
+
     pageSize:
       MEMBER_DIRECTORY_PAGE_SIZE,
-    resultCount: count,
+
+    resultCount:
+      count,
+
     totalMembers:
-      totalMembers ?? 0,
+      stats.total,
+
     totalPages,
   };
 }

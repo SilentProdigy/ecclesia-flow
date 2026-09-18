@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 
 import {
   ArrowLeft,
@@ -238,7 +238,7 @@ const wasUpdated =
         </div>
       </section>
 
-      {/* Face */}
+      {/* Face Recognition */}
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100">
@@ -248,7 +248,7 @@ const wasUpdated =
             />
           </div>
 
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="font-bold text-slate-950">
               Face Recognition
             </h2>
@@ -260,7 +260,7 @@ const wasUpdated =
                 : member.face_status ===
                     "disabled"
                   ? "Face recognition is disabled for this member."
-                  : "This member has not yet completed face enrollment."}
+                  : "This member still needs face enrollment."}
             </p>
           </div>
         </div>
@@ -268,11 +268,24 @@ const wasUpdated =
         {member.face_status ===
           "not_enrolled" && (
           <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
-            Face enrollment will be
-            available in the biometric
-            attendance phase.
+            Profile photos and face
+            enrollment are separate. This
+            person is not yet ready for
+            face-recognition check-in.
           </div>
         )}
+
+        <Link
+          href={`/members/${member.id}/face-enrollment`}
+          className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          <ScanFace size={17} />
+
+          {member.face_status ===
+          "not_enrolled"
+            ? "Face Enrollment"
+            : "View Face Enrollment"}
+        </Link>
       </section>
 
       {/* Attendance Placeholder */}
