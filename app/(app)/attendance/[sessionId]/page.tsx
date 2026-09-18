@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   MapPin,
   Play,
@@ -31,6 +32,14 @@ import {
 import {
   AttendanceWorkspace,
 } from "@/components/attendance/attendance-workspace";
+
+import {
+  AttendanceRoster,
+} from "@/components/attendance/attendance-roster";
+
+import {
+  CompleteAttendancePanel,
+} from "@/components/attendance/complete-attendance-panel";
 
 import {
   openAttendanceSessionAction,
@@ -85,6 +94,7 @@ export default async function AttendanceSessionPage({
         <ArrowLeft
           size={17}
         />
+
         Attendance
       </Link>
 
@@ -197,6 +207,7 @@ export default async function AttendanceSessionPage({
                 size={18}
                 fill="currentColor"
               />
+
               Start Attendance
             </button>
           </form>
@@ -205,8 +216,59 @@ export default async function AttendanceSessionPage({
 
       {session.status ===
         "open" && (
-        <div className="mt-5">
-          <AttendanceWorkspace
+        <>
+          <div className="mt-5">
+            <AttendanceWorkspace
+              sessionId={
+                session.id
+              }
+              timezone={
+                session.event
+                  .timezone
+              }
+            />
+          </div>
+
+          <CompleteAttendancePanel
+            sessionId={
+              session.id
+            }
+            attendanceCount={
+              session.attendance_count
+            }
+          />
+        </>
+      )}
+
+      {session.status ===
+        "completed" && (
+        <>
+          <section className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/70">
+                <CheckCircle2
+                  size={21}
+                  className="text-blue-700"
+                />
+              </div>
+
+              <div>
+                <h2 className="font-bold text-blue-950">
+                  Attendance Completed
+                </h2>
+
+                <p className="mt-1 text-sm leading-6 text-blue-700">
+                  Check-in is now
+                  closed. The final
+                  attendance roster
+                  is available below
+                  for review.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <AttendanceRoster
             sessionId={
               session.id
             }
@@ -214,24 +276,9 @@ export default async function AttendanceSessionPage({
               session.event
                 .timezone
             }
+            mode="readonly"
           />
-        </div>
-      )}
-
-      {session.status ===
-        "completed" && (
-        <section className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-5">
-          <h2 className="font-bold text-blue-950">
-            Attendance Completed
-          </h2>
-
-          <p className="mt-2 text-sm leading-6 text-blue-700">
-            This session is closed
-            for new check-ins.
-            Attendance records are
-            retained for reporting.
-          </p>
-        </section>
+        </>
       )}
 
       {session.status ===

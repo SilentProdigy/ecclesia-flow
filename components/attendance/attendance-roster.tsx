@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Clock3,
   LoaderCircle,
+  LockKeyhole,
   RotateCcw,
   Search,
   UsersRound,
@@ -37,9 +38,13 @@ interface AttendanceRosterProps {
 
   timezone: string;
 
-  refreshVersion: number;
+  refreshVersion?: number;
 
-  onAttendanceChanged:
+  mode?:
+    | "live"
+    | "readonly";
+
+  onAttendanceChanged?:
     () => void;
 }
 
@@ -48,7 +53,8 @@ const PREVIEW_COUNT = 4;
 export function AttendanceRoster({
   sessionId,
   timezone,
-  refreshVersion,
+  refreshVersion = 0,
+  mode = "live",
   onAttendanceChanged,
 }: AttendanceRosterProps) {
   const [
@@ -87,6 +93,9 @@ export function AttendanceRoster({
       AttendanceRosterItem | null
     >(null);
 
+  const isLive =
+    mode === "live";
+
   const loadRoster =
     useCallback(
       async (
@@ -112,9 +121,7 @@ export function AttendanceRoster({
             result.roster
           );
 
-          setError(
-            null
-          );
+          setError(null);
         } else {
           setError(
             result.message
@@ -136,6 +143,10 @@ export function AttendanceRoster({
   ]);
 
   useEffect(() => {
+    if (!isLive) {
+      return;
+    }
+
     const interval =
       window.setInterval(
         () => {
@@ -156,7 +167,10 @@ export function AttendanceRoster({
         interval
       );
     };
-  }, [loadRoster]);
+  }, [
+    isLive,
+    loadRoster,
+  ]);
 
   const previewRoster =
     roster.slice(
@@ -173,7 +187,7 @@ export function AttendanceRoster({
       false
     );
 
-    onAttendanceChanged();
+    onAttendanceChanged?.();
   }
 
   return (
@@ -186,15 +200,25 @@ export function AttendanceRoster({
                 Checked In
               </h2>
 
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Live
-              </span>
+              {isLive ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Live
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">
+                  <LockKeyhole
+                    size={11}
+                  />
+                  Final
+                </span>
+              )}
             </div>
 
             <p className="mt-1 text-sm text-slate-500">
-              Current attendance
-              roster.
+              {isLive
+                ? "Current attendance roster."
+                : "Final attendance roster for this session."}
             </p>
           </div>
 
@@ -246,12 +270,13 @@ export function AttendanceRoster({
             />
 
             <p className="mt-3 text-sm font-semibold text-slate-700">
-              No check-ins yet
+              No check-ins
             </p>
 
             <p className="mt-1 text-xs text-slate-500">
-              Check-ins will
-              appear here.
+              No attendance was
+              recorded for this
+              session.
             </p>
           </div>
         ) : (
@@ -269,10 +294,13 @@ export function AttendanceRoster({
                     timezone={
                       timezone
                     }
-                    onUndo={() =>
-                      setCorrectionTarget(
-                        record
-                      )
+                    onUndo={
+                      isLive
+                        ? () =>
+                            setCorrectionTarget(
+                              record
+                            )
+                        : undefined
                     }
                   />
                 )
@@ -303,6 +331,14 @@ export function AttendanceRoster({
             )}
           </>
         )}
+
+        {isLive && (
+          <p className="mt-4 text-center text-[11px] text-slate-400">
+            Attendance updates
+            automatically every 5
+            seconds.
+          </p>
+        )}
       </section>
 
       {rosterOpen && (
@@ -310,6 +346,9 @@ export function AttendanceRoster({
           roster={roster}
           timezone={
             timezone
+          }
+          allowCorrections={
+            isLive
           }
           onClose={() =>
             setRosterOpen(
@@ -330,24 +369,25 @@ export function AttendanceRoster({
         />
       )}
 
-      {correctionTarget && (
-        <AttendanceCorrectionModal
-          sessionId={
-            sessionId
-          }
-          record={
-            correctionTarget
-          }
-          onClose={() =>
-            setCorrectionTarget(
-              null
-            )
-          }
-          onCorrected={
-            handleCorrected
-          }
-        />
-      )}
+      {isLive &&
+        correctionTarget && (
+          <AttendanceCorrectionModal
+            sessionId={
+              sessionId
+            }
+            record={
+              correctionTarget
+            }
+            onClose={() =>
+              setCorrectionTarget(
+                null
+              )
+            }
+            onCorrected={
+              handleCorrected
+            }
+          />
+        )}
     </>
   );
 }
@@ -362,15 +402,11 @@ function CompactRosterRow({
 
   timezone: string;
 
-  onUndo: () => void;
+  onUndo?:
+    () => void;
 }) {
   const displayName =
     getDisplayName(
-      record
-    );
-
-  const initials =
-    getInitials(
       record
     );
 
@@ -381,7 +417,9 @@ function CompactRosterRow({
           record.photo_url
         }
         initials={
-          initials
+          getInitials(
+            record
+          )
         }
       />
 
@@ -426,18 +464,20 @@ function CompactRosterRow({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={
-          onUndo
-        }
-        aria-label={`Correct attendance for ${displayName}`}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-      >
-        <RotateCcw
-          size={15}
-        />
-      </button>
+      {onUndo && (
+        <button
+          type="button"
+          onClick={
+            onUndo
+          }
+          aria-label={`Correct attendance for ${displayName}`}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        >
+          <RotateCcw
+            size={15}
+          />
+        </button>
+      )}
     </div>
   );
 }
@@ -445,6 +485,7 @@ function CompactRosterRow({
 function FullRosterSheet({
   roster,
   timezone,
+  allowCorrections,
   onClose,
   onCorrect,
 }: {
@@ -452,6 +493,9 @@ function FullRosterSheet({
     AttendanceRosterItem[];
 
   timezone: string;
+
+  allowCorrections:
+    boolean;
 
   onClose: () => void;
 
@@ -583,8 +627,9 @@ function FullRosterSheet({
               </div>
 
               <p className="mt-1 text-sm text-slate-500">
-                Everyone currently
-                checked in.
+                {allowCorrections
+                  ? "Everyone currently checked in."
+                  : "Final recorded attendance for this session."}
               </p>
             </div>
 
@@ -641,10 +686,13 @@ function FullRosterSheet({
                     timezone={
                       timezone
                     }
-                    onCorrect={() =>
-                      onCorrect(
-                        record
-                      )
+                    onCorrect={
+                      allowCorrections
+                        ? () =>
+                            onCorrect(
+                              record
+                            )
+                        : undefined
                     }
                   />
                 )
@@ -678,7 +726,7 @@ function FullRosterRow({
 
   timezone: string;
 
-  onCorrect:
+  onCorrect?:
     () => void;
 }) {
   const displayName =
@@ -711,9 +759,7 @@ function FullRosterRow({
             )}
           </span>
 
-          <span>
-            •
-          </span>
+          <span>•</span>
 
           <span>
             {getMemberTypeLabel(
@@ -728,7 +774,9 @@ function FullRosterRow({
             record.checked_in_at,
             timezone
           )}
+
           {" • "}
+
           <span className="capitalize">
             {
               record.check_in_method
@@ -746,17 +794,19 @@ function FullRosterRow({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={
-          onCorrect
-        }
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-      >
-        <RotateCcw
-          size={15}
-        />
-      </button>
+      {onCorrect && (
+        <button
+          type="button"
+          onClick={
+            onCorrect
+          }
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        >
+          <RotateCcw
+            size={15}
+          />
+        </button>
+      )}
     </div>
   );
 }
@@ -831,10 +881,7 @@ function AttendanceCorrectionModal({
     }
 
     setError(null);
-
-    setIsSubmitting(
-      true
-    );
+    setIsSubmitting(true);
 
     const result =
       await voidAttendanceRecordAction({
@@ -847,9 +894,7 @@ function AttendanceCorrectionModal({
         reason,
       });
 
-    setIsSubmitting(
-      false
-    );
+    setIsSubmitting(false);
 
     if (!result.success) {
       setError(
@@ -905,9 +950,7 @@ function AttendanceCorrectionModal({
             }
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 disabled:opacity-50"
           >
-            <X
-              size={18}
-            />
+            <X size={18} />
           </button>
         </div>
 
