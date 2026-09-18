@@ -31,6 +31,10 @@ import {
 } from "@/lib/attendance/attendance-summary.server";
 
 import {
+  createClient,
+} from "@/lib/supabase/server";
+
+import {
   AttendanceSessionStatus,
 } from "@/components/attendance/attendance-session-status";
 
@@ -49,6 +53,10 @@ import {
 import {
   CompleteAttendancePanel,
 } from "@/components/attendance/complete-attendance-panel";
+
+import {
+  ReopenAttendancePanel,
+} from "@/components/attendance/reopen-attendance-panel";
 
 import {
   openAttendanceSessionAction,
@@ -98,6 +106,42 @@ export default async function AttendanceSessionPage({
     getAttendanceSessionLocation(
       session
     );
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: claimsData,
+  } =
+    await supabase.auth.getClaims();
+
+  const userId =
+    claimsData?.claims?.sub;
+
+  let canReopen =
+    false;
+
+  if (userId) {
+    const {
+      data: profile,
+    } = await supabase
+      .from("profiles")
+      .select(
+        "role, is_active"
+      )
+      .eq(
+        "id",
+        userId
+      )
+      .maybeSingle();
+
+    canReopen =
+      Boolean(
+        profile?.is_active &&
+          profile.role ===
+            "admin"
+      );
+  }
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6">
@@ -323,6 +367,17 @@ export default async function AttendanceSessionPage({
             }
             mode="readonly"
           />
+
+          {canReopen && (
+            <ReopenAttendancePanel
+              sessionId={
+                session.id
+              }
+              attendanceCount={
+                summary.total
+              }
+            />
+          )}
         </>
       )}
 
