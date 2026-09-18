@@ -15,6 +15,7 @@ import {
   Loader2,
   MapPin,
   Repeat2,
+  Save,
 } from "lucide-react";
 
 import {
@@ -23,27 +24,27 @@ import {
 
 import {
   createEventAction,
+  updateEventAction,
 } from "@/app/(app)/events/actions";
 
 import {
   DAYS_OF_WEEK,
+  EVENT_STATUS_OPTIONS,
   EVENT_TYPE_OPTIONS,
 } from "@/lib/events/types";
 
 import type {
   EventRecurrence,
+  EventStatus,
   EventType,
 } from "@/lib/events/types";
-
-interface EventFormProps {
-  defaultStartDate: string;
-}
 
 interface EventDraft {
   name: string;
   description: string;
   eventType: EventType;
   location: string;
+  status: EventStatus;
   recurrence: EventRecurrence;
   recurrenceInterval: string;
   daysOfWeek: number[];
@@ -54,6 +55,13 @@ interface EventDraft {
   durationMinutes: string;
 }
 
+interface EventFormProps {
+  mode?: "create" | "edit";
+  eventId?: string;
+  defaultStartDate: string;
+  initialValues?: EventDraft;
+}
+
 const RECURRENCE_OPTIONS: Array<{
   value: EventRecurrence;
   label: string;
@@ -61,7 +69,8 @@ const RECURRENCE_OPTIONS: Array<{
 }> = [
   {
     value: "none",
-    label: "Does not repeat",
+    label:
+      "Does not repeat",
     description:
       "For one-time services and special events.",
   },
@@ -88,9 +97,8 @@ const RECURRENCE_OPTIONS: Array<{
 function FieldError({
   errors,
 }: {
-  errors:
-    | string[]
-    | undefined;
+  errors?:
+    string[];
 }) {
   if (
     !errors ||
@@ -135,9 +143,13 @@ function getIntervalUnit(
 }
 
 export function EventForm({
+  mode = "create",
+  eventId,
   defaultStartDate,
+  initialValues,
 }: EventFormProps) {
-  const router = useRouter();
+  const router =
+    useRouter();
 
   const [
     submitting,
@@ -164,25 +176,29 @@ export function EventForm({
   const [
     draft,
     setDraft,
-  ] = useState<EventDraft>({
-    name: "",
-    description: "",
-    eventType:
-      "worship_service",
-    location: "",
-    recurrence:
-      "weekly",
-    recurrenceInterval: "1",
-    daysOfWeek: [0],
-    dayOfMonth: "1",
-    startsOn:
-      defaultStartDate,
-    endsOn: "",
-    defaultStartTime:
-      "09:00",
-    durationMinutes:
-      "90",
-  });
+  ] = useState<EventDraft>(
+    initialValues ?? {
+      name: "",
+      description: "",
+      eventType:
+        "worship_service",
+      location: "",
+      status: "active",
+      recurrence:
+        "weekly",
+      recurrenceInterval:
+        "1",
+      daysOfWeek: [0],
+      dayOfMonth: "1",
+      startsOn:
+        defaultStartDate,
+      endsOn: "",
+      defaultStartTime:
+        "09:00",
+      durationMinutes:
+        "90",
+    },
+  );
 
   function updateDraft<
     K extends keyof EventDraft,
@@ -231,7 +247,8 @@ export function EventForm({
           ...draft.daysOfWeek,
           day,
         ].sort(
-          (a, b) => a - b,
+          (a, b) =>
+            a - b,
         );
 
     updateDraft(
@@ -253,59 +270,71 @@ export function EventForm({
     setGeneralError(null);
     setFieldErrors({});
 
+    const input = {
+      name:
+        draft.name,
+
+      description:
+        draft.description,
+
+      eventType:
+        draft.eventType,
+
+      location:
+        draft.location,
+
+      status:
+        draft.status,
+
+      recurrence:
+        draft.recurrence,
+
+      recurrenceInterval:
+        draft.recurrenceInterval,
+
+      daysOfWeek:
+        draft.daysOfWeek,
+
+      dayOfMonth:
+        draft.recurrence ===
+        "monthly"
+          ? draft.dayOfMonth
+          : null,
+
+      startsOn:
+        draft.startsOn,
+
+      endsOn:
+        draft.recurrence ===
+        "none"
+          ? null
+          : draft.endsOn,
+
+      defaultStartTime:
+        draft.defaultStartTime,
+
+      durationMinutes:
+        draft.durationMinutes,
+
+      timezone:
+        "Asia/Manila",
+    };
+
     const result =
-      await createEventAction({
-        name: draft.name,
-
-        description:
-          draft.description,
-
-        eventType:
-          draft.eventType,
-
-        location:
-          draft.location,
-
-        status: "active",
-
-        recurrence:
-          draft.recurrence,
-
-        recurrenceInterval:
-          draft.recurrenceInterval,
-
-        daysOfWeek:
-          draft.daysOfWeek,
-
-        dayOfMonth:
-          draft.recurrence ===
-          "monthly"
-            ? draft.dayOfMonth
-            : null,
-
-        startsOn:
-          draft.startsOn,
-
-        endsOn:
-          draft.recurrence ===
-          "none"
-            ? null
-            : draft.endsOn,
-
-        defaultStartTime:
-          draft.defaultStartTime,
-
-        durationMinutes:
-          draft.durationMinutes,
-
-        timezone:
-          "Asia/Manila",
-      });
+      mode === "edit" &&
+      eventId
+        ? await updateEventAction(
+            eventId,
+            input,
+          )
+        : await createEventAction(
+            input,
+          );
 
     if (!result.success) {
       setGeneralError(
         result.error ??
-          "Unable to create the event.",
+          "Unable to save the event.",
       );
 
       setFieldErrors(
@@ -314,12 +343,22 @@ export function EventForm({
       );
 
       setSubmitting(false);
+
       return;
     }
 
-    router.push(
-      "/events?created=1",
-    );
+    if (
+      mode === "edit" &&
+      eventId
+    ) {
+      router.push(
+        `/events/${eventId}?updated=1`,
+      );
+    } else {
+      router.push(
+        "/events?created=1",
+      );
+    }
 
     router.refresh();
   }
@@ -330,12 +369,17 @@ export function EventForm({
       draft.recurrenceInterval,
     );
 
+  const isEditing =
+    mode === "edit";
+
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       className="space-y-5"
     >
-      {generalError ? (
+      {generalError && (
         <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           <AlertCircle
             size={19}
@@ -346,7 +390,7 @@ export function EventForm({
             {generalError}
           </p>
         </div>
-      ) : null}
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5">
@@ -356,9 +400,8 @@ export function EventForm({
 
           <p className="mt-1 text-sm text-slate-500">
             Add the basic
-            information people
-            use to identify this
-            event.
+            information used to
+            identify this event.
           </p>
         </div>
 
@@ -386,11 +429,8 @@ export function EventForm({
                 )
               }
               placeholder="Sunday Worship"
-              autoFocus
-              aria-invalid={
-                Boolean(
-                  fieldErrors.name,
-                )
+              autoFocus={
+                !isEditing
               }
               className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
             />
@@ -403,7 +443,7 @@ export function EventForm({
           </label>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
+            <label>
               <span className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Event type
               </span>
@@ -421,7 +461,7 @@ export function EventForm({
                       .value as EventType,
                   )
                 }
-                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
               >
                 {EVENT_TYPE_OPTIONS.map(
                   (option) => (
@@ -440,15 +480,9 @@ export function EventForm({
                   ),
                 )}
               </select>
-
-              <FieldError
-                errors={
-                  fieldErrors.eventType
-                }
-              />
             </label>
 
-            <label className="block">
+            <label>
               <span className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Location
               </span>
@@ -460,7 +494,6 @@ export function EventForm({
                 />
 
                 <input
-                  type="text"
                   value={
                     draft.location
                   }
@@ -469,25 +502,59 @@ export function EventForm({
                   ) =>
                     updateDraft(
                       "location",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
                   placeholder="Main Sanctuary"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-sm text-slate-950 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
                 />
               </div>
-
-              <FieldError
-                errors={
-                  fieldErrors.location
-                }
-              />
             </label>
           </div>
 
-          <label className="block">
+          {isEditing && (
+            <label>
+              <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Event status
+              </span>
+
+              <select
+                value={
+                  draft.status
+                }
+                onChange={(
+                  event,
+                ) =>
+                  updateDraft(
+                    "status",
+                    event.target
+                      .value as EventStatus,
+                  )
+                }
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+              >
+                {EVENT_STATUS_OPTIONS.map(
+                  (option) => (
+                    <option
+                      key={
+                        option.value
+                      }
+                      value={
+                        option.value
+                      }
+                    >
+                      {
+                        option.label
+                      }
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          )}
+
+          <label>
             <span className="mb-1.5 block text-sm font-semibold text-slate-700">
               Description
               <span className="ml-1 font-normal text-slate-400">
@@ -510,13 +577,7 @@ export function EventForm({
               }
               rows={3}
               placeholder="Add notes or a short description..."
-              className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
-            />
-
-            <FieldError
-              errors={
-                fieldErrors.description
-              }
+              className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
             />
           </label>
         </div>
@@ -571,21 +632,21 @@ export function EventForm({
                       className={`flex min-h-20 items-start gap-3 rounded-xl border p-3 text-left transition ${
                         selected
                           ? "border-slate-950 bg-slate-50 ring-1 ring-slate-950"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
                       }`}
                     >
                       <span
                         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
                           selected
                             ? "border-slate-950 bg-slate-950 text-white"
-                            : "border-slate-300 bg-white"
+                            : "border-slate-300"
                         }`}
                       >
-                        {selected ? (
+                        {selected && (
                           <Check
                             size={12}
                           />
-                        ) : null}
+                        )}
                       </span>
 
                       <span>
@@ -606,16 +667,10 @@ export function EventForm({
                 },
               )}
             </div>
-
-            <FieldError
-              errors={
-                fieldErrors.recurrence
-              }
-            />
           </div>
 
           {draft.recurrence !==
-          "none" ? (
+            "none" && (
             <div className="rounded-xl bg-slate-50 p-3">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-slate-700">
@@ -626,7 +681,6 @@ export function EventForm({
                   type="number"
                   min={1}
                   max={52}
-                  inputMode="numeric"
                   value={
                     draft.recurrenceInterval
                   }
@@ -635,12 +689,11 @@ export function EventForm({
                   ) =>
                     updateDraft(
                       "recurrenceInterval",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
-                  className="h-10 w-20 rounded-lg border border-slate-300 bg-white px-3 text-center text-sm font-semibold text-slate-950 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                  className="h-10 w-20 rounded-lg border border-slate-300 bg-white px-3 text-center text-sm font-semibold"
                 />
 
                 <span className="text-sm font-medium text-slate-700">
@@ -654,10 +707,10 @@ export function EventForm({
                 }
               />
             </div>
-          ) : null}
+          )}
 
           {draft.recurrence ===
-          "weekly" ? (
+            "weekly" && (
             <div>
               <span className="mb-2 block text-sm font-semibold text-slate-700">
                 Days of the week
@@ -677,21 +730,15 @@ export function EventForm({
                           day.value
                         }
                         type="button"
-                        aria-label={
-                          day.label
-                        }
-                        aria-pressed={
-                          selected
-                        }
                         onClick={() =>
                           toggleDay(
                             day.value,
                           )
                         }
-                        className={`flex aspect-square min-h-10 items-center justify-center rounded-xl text-xs font-semibold transition sm:aspect-auto sm:h-11 ${
+                        className={`flex aspect-square min-h-10 items-center justify-center rounded-xl text-xs font-semibold transition ${
                           selected
                             ? "bg-slate-950 text-white"
-                            : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            : "border border-slate-200 bg-white text-slate-600"
                         }`}
                       >
                         {
@@ -709,11 +756,11 @@ export function EventForm({
                 }
               />
             </div>
-          ) : null}
+          )}
 
           {draft.recurrence ===
-          "monthly" ? (
-            <label className="block">
+            "monthly" && (
+            <label>
               <span className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Day of month
               </span>
@@ -722,7 +769,6 @@ export function EventForm({
                 type="number"
                 min={1}
                 max={31}
-                inputMode="numeric"
                 value={
                   draft.dayOfMonth
                 }
@@ -735,15 +781,8 @@ export function EventForm({
                       .value,
                   )
                 }
-                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-950 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm"
               />
-
-              <p className="mt-1.5 text-xs leading-5 text-slate-500">
-                Months that do
-                not contain this
-                date will be
-                skipped.
-              </p>
 
               <FieldError
                 errors={
@@ -751,14 +790,13 @@ export function EventForm({
                 }
               />
             </label>
-          ) : null}
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
+            <label>
               <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
                 <CalendarDays
                   size={16}
-                  className="text-slate-400"
                 />
 
                 {draft.recurrence ===
@@ -781,7 +819,7 @@ export function EventForm({
                       .value,
                   )
                 }
-                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
               />
 
               <FieldError
@@ -791,13 +829,11 @@ export function EventForm({
               />
             </label>
 
-            <label className="block">
+            <label>
               <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
                 <Clock3
                   size={16}
-                  className="text-slate-400"
                 />
-
                 Start time
               </span>
 
@@ -815,19 +851,13 @@ export function EventForm({
                       .value,
                   )
                 }
-                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
-              />
-
-              <FieldError
-                errors={
-                  fieldErrors.defaultStartTime
-                }
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
               />
             </label>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
+            <label>
               <span className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Duration
               </span>
@@ -837,7 +867,6 @@ export function EventForm({
                   type="number"
                   min={1}
                   max={1440}
-                  inputMode="numeric"
                   value={
                     draft.durationMinutes
                   }
@@ -846,29 +875,22 @@ export function EventForm({
                   ) =>
                     updateDraft(
                       "durationMinutes",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-20 text-sm text-slate-950 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-20 text-sm"
                 />
 
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
                   minutes
                 </span>
               </div>
-
-              <FieldError
-                errors={
-                  fieldErrors.durationMinutes
-                }
-              />
             </label>
 
             {draft.recurrence !==
             "none" ? (
-              <label className="block">
+              <label>
                 <span className="mb-1.5 block text-sm font-semibold text-slate-700">
                   Ends on
                   <span className="ml-1 font-normal text-slate-400">
@@ -890,12 +912,11 @@ export function EventForm({
                   ) =>
                     updateDraft(
                       "endsOn",
-                      event
-                        .target
+                      event.target
                         .value,
                     )
                   }
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
                 />
 
                 <FieldError
@@ -905,30 +926,34 @@ export function EventForm({
                 />
               </label>
             ) : (
-              <div className="hidden sm:block" />
+              <div />
             )}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs leading-5 text-slate-500">
-              ChurchFlow will
-              create the next
-              90 days of service
-              sessions
-              automatically.
-              One-time events
-              create a single
-              session.
-            </p>
-          </div>
+          {isEditing && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+              Saving schedule
+              changes regenerates
+              ordinary future
+              sessions. Cancelled,
+              completed, open, or
+              customized sessions
+              are preserved.
+            </div>
+          )}
         </div>
       </section>
 
-      <div className="sticky bottom-[76px] z-20 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:flex sm:justify-end sm:gap-3 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+      <div className="sticky bottom-[76px] z-20 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:flex sm:justify-end sm:border-0 sm:bg-transparent sm:px-0">
         <div className="grid grid-cols-2 gap-3 sm:flex">
           <Link
-            href="/events"
-            className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            href={
+              isEditing &&
+              eventId
+                ? `/events/${eventId}`
+                : "/events"
+            }
+            className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700"
           >
             Cancel
           </Link>
@@ -938,7 +963,7 @@ export function EventForm({
             disabled={
               submitting
             }
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white disabled:opacity-60"
           >
             {submitting ? (
               <>
@@ -946,7 +971,14 @@ export function EventForm({
                   size={18}
                   className="animate-spin"
                 />
-                Creating...
+                Saving...
+              </>
+            ) : isEditing ? (
+              <>
+                <Save
+                  size={18}
+                />
+                Save Changes
               </>
             ) : (
               <>

@@ -1,6 +1,8 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 import type {
   EventRecurrence,
@@ -53,6 +55,11 @@ export interface EventDetailResult {
   currentAndUpcomingSessions: EventSessionRecord[];
   recentSessions: EventSessionRecord[];
   totalSessions: number;
+}
+
+export interface EventSessionDetailResult {
+  event: EventRecord;
+  session: EventSessionRecord;
 }
 
 export type CurrentUserRole =
@@ -121,7 +128,9 @@ export async function getCurrentUserRole(): Promise<
     error: profileError,
   } = await supabase
     .from("profiles")
-    .select("role, is_active")
+    .select(
+      "role, is_active",
+    )
     .eq("id", userId)
     .single();
 
@@ -149,19 +158,23 @@ export async function getEventDirectory(
   const supabase =
     await createClient();
 
-  const page = Math.max(
-    1,
-    filters.page,
-  );
+  const page =
+    Math.max(
+      1,
+      filters.page,
+    );
 
   const pageSize =
     EVENT_DIRECTORY_PAGE_SIZE;
 
   const from =
-    (page - 1) * pageSize;
+    (page - 1) *
+    pageSize;
 
   const to =
-    from + pageSize - 1;
+    from +
+    pageSize -
+    1;
 
   let query = supabase
     .from("events")
@@ -176,14 +189,20 @@ export async function getEventDirectory(
     );
   }
 
-  if (filters.type !== "all") {
+  if (
+    filters.type !==
+    "all"
+  ) {
     query = query.eq(
       "event_type",
       filters.type,
     );
   }
 
-  if (filters.status !== "all") {
+  if (
+    filters.status !==
+    "all"
+  ) {
     query = query.eq(
       "status",
       filters.status,
@@ -191,7 +210,8 @@ export async function getEventDirectory(
   }
 
   if (
-    filters.recurrence !== "all"
+    filters.recurrence !==
+    "all"
   ) {
     query = query.eq(
       "recurrence",
@@ -204,10 +224,16 @@ export async function getEventDirectory(
     error,
     count,
   } = await query
-    .order("name", {
-      ascending: true,
-    })
-    .range(from, to);
+    .order(
+      "name",
+      {
+        ascending: true,
+      },
+    )
+    .range(
+      from,
+      to,
+    );
 
   if (error) {
     throw new Error(
@@ -216,18 +242,25 @@ export async function getEventDirectory(
   }
 
   const events =
-    (data ?? []) as EventRecord[];
+    (data ??
+      []) as EventRecord[];
 
-  const total = count ?? 0;
+  const total =
+    count ?? 0;
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(
-      total / pageSize,
-    ),
-  );
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        total /
+          pageSize,
+      ),
+    );
 
-  if (events.length === 0) {
+  if (
+    events.length ===
+    0
+  ) {
     return {
       events: [],
       total,
@@ -239,7 +272,8 @@ export async function getEventDirectory(
 
   const eventIds =
     events.map(
-      (event) => event.id,
+      (event) =>
+        event.id,
     );
 
   const now =
@@ -251,15 +285,27 @@ export async function getEventDirectory(
   } = await supabase
     .from("event_sessions")
     .select("*")
-    .in("event_id", eventIds)
-    .in("status", [
-      "scheduled",
-      "open",
-    ])
-    .gte("starts_at", now)
-    .order("starts_at", {
-      ascending: true,
-    });
+    .in(
+      "event_id",
+      eventIds,
+    )
+    .in(
+      "status",
+      [
+        "scheduled",
+        "open",
+      ],
+    )
+    .gte(
+      "starts_at",
+      now,
+    )
+    .order(
+      "starts_at",
+      {
+        ascending: true,
+      },
+    );
 
   if (sessionError) {
     throw new Error(
@@ -277,7 +323,10 @@ export async function getEventDirectory(
       EventSessionRecord
     >();
 
-  for (const session of sessions) {
+  for (
+    const session
+    of sessions
+  ) {
     if (
       !nextSessionByEvent.has(
         session.event_id,
@@ -290,26 +339,55 @@ export async function getEventDirectory(
     }
   }
 
-  const directoryEvents =
-    events.map(
-      (
-        event,
-      ): EventDirectoryItem => ({
-        ...event,
-        next_session:
-          nextSessionByEvent.get(
-            event.id,
-          ) ?? null,
-      }),
-    );
-
   return {
-    events: directoryEvents,
+    events:
+      events.map(
+        (
+          event,
+        ): EventDirectoryItem => ({
+          ...event,
+
+          next_session:
+            nextSessionByEvent.get(
+              event.id,
+            ) ?? null,
+        }),
+      ),
+
     total,
     page,
     pageSize,
     totalPages,
   };
+}
+
+export async function getEventById(
+  eventId: string,
+): Promise<EventRecord | null> {
+  const supabase =
+    await createClient();
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("events")
+    .select("*")
+    .eq(
+      "id",
+      eventId,
+    )
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `Unable to load event: ${error.message}`,
+    );
+  }
+
+  return data
+    ? (data as EventRecord)
+    : null;
 }
 
 export async function getEventDetail(
@@ -324,7 +402,10 @@ export async function getEventDetail(
   } = await supabase
     .from("events")
     .select("*")
-    .eq("id", eventId)
+    .eq(
+      "id",
+      eventId,
+    )
     .maybeSingle();
 
   if (eventError) {
@@ -351,7 +432,9 @@ export async function getEventDetail(
     countResult,
   ] = await Promise.all([
     supabase
-      .from("event_sessions")
+      .from(
+        "event_sessions",
+      )
       .select("*")
       .eq(
         "event_id",
@@ -370,7 +453,9 @@ export async function getEventDetail(
       .limit(24),
 
     supabase
-      .from("event_sessions")
+      .from(
+        "event_sessions",
+      )
       .select("*")
       .eq(
         "event_id",
@@ -389,30 +474,42 @@ export async function getEventDetail(
       .limit(12),
 
     supabase
-      .from("event_sessions")
-      .select("id", {
-        count: "exact",
-        head: true,
-      })
+      .from(
+        "event_sessions",
+      )
+      .select(
+        "id",
+        {
+          count:
+            "exact",
+          head: true,
+        },
+      )
       .eq(
         "event_id",
         event.id,
       ),
   ]);
 
-  if (currentResult.error) {
+  if (
+    currentResult.error
+  ) {
     throw new Error(
       `Unable to load upcoming sessions: ${currentResult.error.message}`,
     );
   }
 
-  if (recentResult.error) {
+  if (
+    recentResult.error
+  ) {
     throw new Error(
       `Unable to load recent sessions: ${recentResult.error.message}`,
     );
   }
 
-  if (countResult.error) {
+  if (
+    countResult.error
+  ) {
     throw new Error(
       `Unable to count sessions: ${countResult.error.message}`,
     );
@@ -430,6 +527,75 @@ export async function getEventDetail(
         []) as EventSessionRecord[],
 
     totalSessions:
-      countResult.count ?? 0,
+      countResult.count ??
+      0,
+  };
+}
+
+export async function getEventSessionDetail(
+  eventId: string,
+  sessionId: string,
+): Promise<EventSessionDetailResult | null> {
+  const supabase =
+    await createClient();
+
+  const [
+    eventResult,
+    sessionResult,
+  ] = await Promise.all([
+    supabase
+      .from("events")
+      .select("*")
+      .eq(
+        "id",
+        eventId,
+      )
+      .maybeSingle(),
+
+    supabase
+      .from(
+        "event_sessions",
+      )
+      .select("*")
+      .eq(
+        "id",
+        sessionId,
+      )
+      .eq(
+        "event_id",
+        eventId,
+      )
+      .maybeSingle(),
+  ]);
+
+  if (
+    eventResult.error
+  ) {
+    throw new Error(
+      `Unable to load event: ${eventResult.error.message}`,
+    );
+  }
+
+  if (
+    sessionResult.error
+  ) {
+    throw new Error(
+      `Unable to load session: ${sessionResult.error.message}`,
+    );
+  }
+
+  if (
+    !eventResult.data ||
+    !sessionResult.data
+  ) {
+    return null;
+  }
+
+  return {
+    event:
+      eventResult.data as EventRecord,
+
+    session:
+      sessionResult.data as EventSessionRecord,
   };
 }

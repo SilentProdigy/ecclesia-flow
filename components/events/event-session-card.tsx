@@ -1,7 +1,10 @@
+import Link from "next/link";
+
 import {
   CalendarDays,
   Clock3,
   MapPin,
+  Pencil,
 } from "lucide-react";
 
 import {
@@ -17,6 +20,7 @@ interface EventSessionCardProps {
   eventName: string;
   eventLocation: string | null;
   timezone: string;
+  manageHref?: string;
 }
 
 function formatSessionDate(
@@ -33,7 +37,9 @@ function formatSessionDate(
       year: "numeric",
     },
   ).format(
-    new Date(startsAt),
+    new Date(
+      startsAt,
+    ),
   );
 }
 
@@ -58,6 +64,7 @@ export function EventSessionCard({
   eventName,
   eventLocation,
   timezone,
+  manageHref,
 }: EventSessionCardProps) {
   const title =
     session.title_override ??
@@ -70,7 +77,7 @@ export function EventSessionCard({
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-slate-950">
             {title}
           </h3>
@@ -109,7 +116,7 @@ export function EventSessionCard({
               </span>
             </div>
 
-            {location ? (
+            {location && (
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <MapPin
                   size={16}
@@ -120,22 +127,38 @@ export function EventSessionCard({
                   {location}
                 </span>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
-        <SessionStatusBadge
-          status={
-            session.status
-          }
-        />
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <SessionStatusBadge
+            status={
+              session.status
+            }
+          />
+
+          {manageHref && (
+            <Link
+              href={
+                manageHref
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+            >
+              <Pencil
+                size={13}
+              />
+              Manage
+            </Link>
+          )}
+        </div>
       </div>
 
-      {session.notes ? (
+      {session.notes && (
         <p className="mt-4 border-t border-slate-100 pt-3 text-sm leading-6 text-slate-500">
           {session.notes}
         </p>
-      ) : null}
+      )}
     </article>
   );
 }
