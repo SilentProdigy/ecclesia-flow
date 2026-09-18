@@ -29,8 +29,8 @@ import {
 } from "@/components/attendance/attendance-session-status";
 
 import {
-  ManualCheckInPanel,
-} from "@/components/attendance/manual-check-in-panel";
+  AttendanceWorkspace,
+} from "@/components/attendance/attendance-workspace";
 
 import {
   openAttendanceSessionAction,
@@ -206,9 +206,13 @@ export default async function AttendanceSessionPage({
       {session.status ===
         "open" && (
         <div className="mt-5">
-          <ManualCheckInPanel
+          <AttendanceWorkspace
             sessionId={
               session.id
+            }
+            timezone={
+              session.event
+                .timezone
             }
           />
         </div>

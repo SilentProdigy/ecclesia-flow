@@ -9,18 +9,26 @@ import {
 } from "next/navigation";
 
 import {
+  attendanceRecordIdSchema,
   eventSessionIdSchema,
   manualCheckInSchema,
   quickVisitorCheckInSchema,
+  voidAttendanceSchema,
   type AttendanceMemberSearchResult,
+  type AttendanceRosterResult,
   type ManualMemberCheckInResult,
   type QuickVisitorRegistrationResult,
   type QuickVisitorCheckInInput,
+  type VoidAttendanceResult,
 } from "@/lib/attendance";
 
 import {
   searchManualCheckInMembers,
 } from "@/lib/attendance/manual-check-in.server";
+
+import {
+  getAttendanceRoster,
+} from "@/lib/attendance/attendance-roster.server";
 
 import {
   createClient,
@@ -270,6 +278,65 @@ export async function searchAttendanceMembersAction({
       members: [],
       message:
         "Unable to search members.",
+    };
+  }
+}
+
+export async function getAttendanceRosterAction(
+  eventSessionId: string
+): Promise<AttendanceRosterResult> {
+  const parsed =
+    eventSessionIdSchema.safeParse(
+      eventSessionId
+    );
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      roster: [],
+      count: 0,
+      message:
+        "Invalid attendance session.",
+    };
+  }
+
+  const auth =
+    await getAuthenticatedStaff();
+
+  if (!auth) {
+    return {
+      success: false,
+      roster: [],
+      count: 0,
+      message:
+        "Your staff session is no longer available.",
+    };
+  }
+
+  try {
+    const roster =
+      await getAttendanceRoster(
+        parsed.data
+      );
+
+    return {
+      success: true,
+      roster,
+      count:
+        roster.length,
+    };
+  } catch (error) {
+    console.error(
+      "Attendance roster load failed:",
+      error
+    );
+
+    return {
+      success: false,
+      roster: [],
+      count: 0,
+      message:
+        "Unable to load the attendance roster.",
     };
   }
 }
@@ -760,6 +827,249 @@ export async function registerVisitorAndCheckInAction(
 
     checkedInAt:
       row.checked_in_at,
+
+    displayName,
+  };
+}
+
+export async function voidAttendanceRecordAction({
+  eventSessionId,
+  attendanceRecordId,
+  reason,
+}: {
+  eventSessionId: string;
+
+  attendanceRecordId:
+    string;
+
+  reason: string;
+}): Promise<VoidAttendanceResult> {
+  const sessionParsed =
+    eventSessionIdSchema.safeParse(
+      eventSessionId
+    );
+
+  const attendanceParsed =
+    attendanceRecordIdSchema.safeParse(
+      attendanceRecordId
+    );
+
+  const voidParsed =
+    voidAttendanceSchema.safeParse({
+      attendance_record_id:
+        attendanceRecordId,
+
+      reason,
+    });
+
+  if (
+    !sessionParsed.success ||
+    !attendanceParsed.success ||
+    !voidParsed.success
+  ) {
+    return {
+      success: false,
+
+      message:
+        voidParsed.success
+          ? "Invalid attendance record."
+          : voidParsed.error
+              .issues[0]
+              ?.message ??
+            "Please provide a reason.",
+    };
+  }
+
+  const auth =
+    await getAuthenticatedStaff();
+
+  if (!auth) {
+    return {
+      success: false,
+
+      message:
+        "Your staff session is no longer available.",
+    };
+  }
+
+  const {
+    supabase,
+  } = auth;
+
+  const {
+    data: session,
+    error: sessionError,
+  } = await supabase
+    .from(
+      "event_sessions"
+    )
+    .select(
+      "id, status"
+    )
+    .eq(
+      "id",
+      sessionParsed.data
+    )
+    .maybeSingle();
+
+  if (
+    sessionError ||
+    !session
+  ) {
+    return {
+      success: false,
+
+      message:
+        "This attendance session is unavailable.",
+    };
+  }
+
+  if (
+    session.status !==
+    "open"
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Attendance corrections are only available while this session is open.",
+    };
+  }
+
+  const {
+    data: attendance,
+    error:
+      attendanceError,
+  } = await supabase
+    .from(
+      "attendance_records"
+    )
+    .select(`
+      id,
+      member_id,
+      voided_at,
+      members!inner (
+        first_name,
+        middle_name,
+        last_name,
+        suffix
+      )
+    `)
+    .eq(
+      "id",
+      attendanceParsed.data
+    )
+    .eq(
+      "event_session_id",
+      sessionParsed.data
+    )
+    .maybeSingle();
+
+  if (
+    attendanceError ||
+    !attendance
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Attendance record could not be found.",
+    };
+  }
+
+  if (
+    attendance.voided_at
+  ) {
+    return {
+      success: false,
+
+      message:
+        "This attendance record has already been corrected.",
+    };
+  }
+
+  const rawMember =
+    attendance.members;
+
+  const member =
+    Array.isArray(
+      rawMember
+    )
+      ? rawMember[0]
+      : rawMember;
+
+  if (!member) {
+    return {
+      success: false,
+
+      message:
+        "Member information could not be loaded.",
+    };
+  }
+
+  const displayName =
+    getMemberDisplayName(
+      member
+    );
+
+  const {
+    error: updateError,
+  } = await supabase
+    .from(
+      "attendance_records"
+    )
+    .update({
+      voided_at:
+        new Date()
+          .toISOString(),
+
+      void_reason:
+        voidParsed.data
+          .reason,
+    })
+    .eq(
+      "id",
+      attendanceParsed.data
+    )
+    .eq(
+      "event_session_id",
+      sessionParsed.data
+    )
+    .is(
+      "voided_at",
+      null
+    );
+
+  if (updateError) {
+    console.error(
+      "Unable to void attendance record:",
+      updateError
+    );
+
+    return {
+      success: false,
+
+      message:
+        "Attendance correction could not be saved.",
+    };
+  }
+
+  revalidatePath(
+    "/attendance"
+  );
+
+  revalidatePath(
+    `/attendance/${sessionParsed.data}`
+  );
+
+  return {
+    success: true,
+
+    attendanceRecordId:
+      attendanceParsed.data,
+
+    memberId:
+      attendance.member_id,
 
     displayName,
   };

@@ -99,6 +99,43 @@ export interface ManualCheckInMember {
     boolean;
 }
 
+export interface AttendanceRosterItem {
+  id: string;
+
+  member_id: string;
+
+  member_no: number;
+
+  first_name: string;
+  middle_name:
+    string | null;
+  last_name: string;
+  suffix:
+    string | null;
+  preferred_name:
+    string | null;
+
+  photo_path:
+    string | null;
+
+  photo_url:
+    string | null;
+
+  member_type_at_check_in:
+    MemberType;
+
+  check_in_method:
+    AttendanceMethod;
+
+  checked_in_at: string;
+
+  checked_in_by:
+    string | null;
+
+  checked_in_by_name:
+    string | null;
+}
+
 export type AttendanceMemberSearchResult =
   | {
       success: true;
@@ -110,6 +147,25 @@ export type AttendanceMemberSearchResult =
       success: false;
 
       members: [];
+
+      message: string;
+    };
+
+export type AttendanceRosterResult =
+  | {
+      success: true;
+
+      roster:
+        AttendanceRosterItem[];
+
+      count: number;
+    }
+  | {
+      success: false;
+
+      roster: [];
+
+      count: 0;
 
       message: string;
     };
@@ -166,6 +222,23 @@ export type QuickVisitorRegistrationResult =
         string;
 
       checkedInAt: string;
+
+      displayName: string;
+    }
+  | {
+      success: false;
+
+      message: string;
+    };
+
+export type VoidAttendanceResult =
+  | {
+      success: true;
+
+      attendanceRecordId:
+        string;
+
+      memberId: string;
 
       displayName: string;
     }
