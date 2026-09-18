@@ -1,0 +1,308 @@
+import Link from "next/link";
+
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clock3,
+  MapPin,
+  Play,
+  Search,
+  UsersRound,
+} from "lucide-react";
+
+import {
+  notFound,
+} from "next/navigation";
+
+import {
+  formatAttendanceSessionDate,
+  formatAttendanceSessionTime,
+  getAttendanceSessionLocation,
+  getAttendanceSessionTitle,
+} from "@/lib/attendance";
+
+import {
+  getAttendanceSession,
+} from "@/lib/attendance/attendance-sessions.server";
+
+import {
+  AttendanceSessionStatus,
+} from "@/components/attendance/attendance-session-status";
+
+import {
+  openAttendanceSessionAction,
+} from "../actions";
+
+interface AttendanceSessionPageProps {
+  params: Promise<{
+    sessionId: string;
+  }>;
+
+  searchParams: Promise<{
+    error?: string;
+  }>;
+}
+
+export default async function AttendanceSessionPage({
+  params,
+  searchParams,
+}: AttendanceSessionPageProps) {
+  const {
+    sessionId,
+  } = await params;
+
+  const query =
+    await searchParams;
+
+  const session =
+    await getAttendanceSession(
+      sessionId
+    );
+
+  if (!session) {
+    notFound();
+  }
+
+  const title =
+    getAttendanceSessionTitle(
+      session
+    );
+
+  const location =
+    getAttendanceSessionLocation(
+      session
+    );
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 py-6">
+      <Link
+        href="/attendance"
+        className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-950"
+      >
+        <ArrowLeft
+          size={17}
+        />
+        Attendance
+      </Link>
+
+      {query.error && (
+        <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {getErrorMessage(
+            query.error
+          )}
+        </div>
+      )}
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <AttendanceSessionStatus
+              status={
+                session.status
+              }
+            />
+
+            <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
+              {title}
+            </h1>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">
+            <UsersRound
+              size={17}
+            />
+
+            {
+              session.attendance_count
+            }
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-2.5 border-t border-slate-100 pt-4">
+          <DetailRow
+            icon={
+              <CalendarDays
+                size={17}
+              />
+            }
+          >
+            {formatAttendanceSessionDate(
+              session.session_date
+            )}
+          </DetailRow>
+
+          <DetailRow
+            icon={
+              <Clock3
+                size={17}
+              />
+            }
+          >
+            {formatAttendanceSessionTime(
+              session
+            )}
+          </DetailRow>
+
+          {location && (
+            <DetailRow
+              icon={
+                <MapPin
+                  size={17}
+                />
+              }
+            >
+              {location}
+            </DetailRow>
+          )}
+        </div>
+      </section>
+
+      {session.status ===
+        "scheduled" && (
+        <section className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <h2 className="font-bold text-slate-950">
+            Ready to take attendance?
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Starting attendance will
+            open this session and
+            allow staff to check
+            members in.
+          </p>
+
+          <form
+            action={
+              openAttendanceSessionAction
+            }
+            className="mt-5"
+          >
+            <input
+              type="hidden"
+              name="session_id"
+              value={
+                session.id
+              }
+            />
+
+            <button
+              type="submit"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              <Play
+                size={18}
+                fill="currentColor"
+              />
+              Start Attendance
+            </button>
+          </form>
+        </section>
+      )}
+
+      {session.status ===
+        "open" && (
+        <section className="mt-5 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
+            <Search
+              size={23}
+              className="text-emerald-700"
+            />
+          </div>
+
+          <h2 className="mt-4 text-lg font-bold text-slate-950">
+            Attendance is Open
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            This session is ready
+            for member check-in.
+            Manual member search and
+            check-in will be added
+            in #42.
+          </p>
+
+          <button
+            type="button"
+            disabled
+            className="mt-5 flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-400"
+          >
+            <Search size={18} />
+            Manual Check-In
+          </button>
+        </section>
+      )}
+
+      {session.status ===
+        "completed" && (
+        <section className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <h2 className="font-bold text-blue-950">
+            Attendance Completed
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-blue-700">
+            This session is closed
+            for new check-ins.
+            Attendance records are
+            retained for reporting.
+          </p>
+        </section>
+      )}
+
+      {session.status ===
+        "cancelled" && (
+        <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-100 p-5">
+          <h2 className="font-bold text-slate-900">
+            Session Cancelled
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Attendance cannot be
+            started for a cancelled
+            session.
+          </p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({
+  icon,
+  children,
+}: {
+  icon:
+    React.ReactNode;
+
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 text-sm text-slate-600">
+      <span className="mt-0.5 shrink-0 text-slate-400">
+        {icon}
+      </span>
+
+      <span>
+        {children}
+      </span>
+    </div>
+  );
+}
+
+function getErrorMessage(
+  error: string
+) {
+  switch (error) {
+    case "cannot-open":
+      return "This session can no longer be opened for attendance.";
+
+    case "session-unavailable":
+      return "This session is unavailable.";
+
+    case "start-failed":
+      return "Attendance could not be started. Please try again.";
+
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}

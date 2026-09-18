@@ -9,13 +9,17 @@ export const ATTENDANCE_METHODS = [
 export const attendanceMethodSchema =
   z.enum(ATTENDANCE_METHODS);
 
+export const eventSessionIdSchema =
+  z
+    .string()
+    .uuid(
+      "Invalid event session."
+    );
+
 export const manualCheckInSchema =
   z.object({
-    event_session_id: z
-      .string()
-      .uuid(
-        "Invalid event session."
-      ),
+    event_session_id:
+      eventSessionIdSchema,
 
     member_id: z
       .string()
