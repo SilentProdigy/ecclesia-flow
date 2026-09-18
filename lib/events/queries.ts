@@ -48,9 +48,50 @@ export interface EventDirectoryResult {
   totalPages: number;
 }
 
+export interface EventDetailResult {
+  event: EventRecord;
+  currentAndUpcomingSessions: EventSessionRecord[];
+  recentSessions: EventSessionRecord[];
+  totalSessions: number;
+}
+
 export type CurrentUserRole =
   | "admin"
   | "staff";
+
+function getTodayInTimezone(
+  timezone: string,
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      },
+    ).formatToParts(
+      new Date(),
+    );
+
+  const values: Record<
+    string,
+    string
+  > = {};
+
+  for (const part of parts) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[part.type] =
+        part.value;
+    }
+  }
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 export async function getCurrentUserRole(): Promise<
   CurrentUserRole | null
@@ -268,5 +309,127 @@ export async function getEventDirectory(
     page,
     pageSize,
     totalPages,
+  };
+}
+
+export async function getEventDetail(
+  eventId: string,
+): Promise<EventDetailResult | null> {
+  const supabase =
+    await createClient();
+
+  const {
+    data: eventData,
+    error: eventError,
+  } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (eventError) {
+    throw new Error(
+      `Unable to load event: ${eventError.message}`,
+    );
+  }
+
+  if (!eventData) {
+    return null;
+  }
+
+  const event =
+    eventData as EventRecord;
+
+  const today =
+    getTodayInTimezone(
+      event.timezone,
+    );
+
+  const [
+    currentResult,
+    recentResult,
+    countResult,
+  ] = await Promise.all([
+    supabase
+      .from("event_sessions")
+      .select("*")
+      .eq(
+        "event_id",
+        event.id,
+      )
+      .gte(
+        "session_date",
+        today,
+      )
+      .order(
+        "starts_at",
+        {
+          ascending: true,
+        },
+      )
+      .limit(24),
+
+    supabase
+      .from("event_sessions")
+      .select("*")
+      .eq(
+        "event_id",
+        event.id,
+      )
+      .lt(
+        "session_date",
+        today,
+      )
+      .order(
+        "starts_at",
+        {
+          ascending: false,
+        },
+      )
+      .limit(12),
+
+    supabase
+      .from("event_sessions")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq(
+        "event_id",
+        event.id,
+      ),
+  ]);
+
+  if (currentResult.error) {
+    throw new Error(
+      `Unable to load upcoming sessions: ${currentResult.error.message}`,
+    );
+  }
+
+  if (recentResult.error) {
+    throw new Error(
+      `Unable to load recent sessions: ${recentResult.error.message}`,
+    );
+  }
+
+  if (countResult.error) {
+    throw new Error(
+      `Unable to count sessions: ${countResult.error.message}`,
+    );
+  }
+
+  return {
+    event,
+
+    currentAndUpcomingSessions:
+      (currentResult.data ??
+        []) as EventSessionRecord[],
+
+    recentSessions:
+      (recentResult.data ??
+        []) as EventSessionRecord[],
+
+    totalSessions:
+      countResult.count ?? 0,
   };
 }
