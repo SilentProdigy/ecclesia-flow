@@ -26,6 +26,10 @@ import {
 } from "@/lib/attendance/attendance-sessions.server";
 
 import {
+  getAttendanceSessionSummary,
+} from "@/lib/attendance/attendance-summary.server";
+
+import {
   AttendanceSessionStatus,
 } from "@/components/attendance/attendance-session-status";
 
@@ -36,6 +40,10 @@ import {
 import {
   AttendanceRoster,
 } from "@/components/attendance/attendance-roster";
+
+import {
+  AttendanceSummary,
+} from "@/components/attendance/attendance-summary";
 
 import {
   CompleteAttendancePanel,
@@ -74,6 +82,11 @@ export default async function AttendanceSessionPage({
   if (!session) {
     notFound();
   }
+
+  const summary =
+    await getAttendanceSessionSummary(
+      session.id
+    );
 
   const title =
     getAttendanceSessionTitle(
@@ -170,6 +183,26 @@ export default async function AttendanceSessionPage({
         </div>
       </section>
 
+      {(session.status ===
+        "open" ||
+        session.status ===
+          "completed") && (
+        <AttendanceSummary
+          sessionId={
+            session.id
+          }
+          initialSummary={
+            summary
+          }
+          mode={
+            session.status ===
+            "open"
+              ? "live"
+              : "final"
+          }
+        />
+      )}
+
       {session.status ===
         "scheduled" && (
         <section className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-5">
@@ -234,7 +267,7 @@ export default async function AttendanceSessionPage({
               session.id
             }
             attendanceCount={
-              session.attendance_count
+              summary.total
             }
           />
         </>
