@@ -6,7 +6,6 @@ import {
   Clock3,
   MapPin,
   Play,
-  Search,
   UsersRound,
 } from "lucide-react";
 
@@ -28,6 +27,10 @@ import {
 import {
   AttendanceSessionStatus,
 } from "@/components/attendance/attendance-session-status";
+
+import {
+  ManualCheckInPanel,
+} from "@/components/attendance/manual-check-in-panel";
 
 import {
   openAttendanceSessionAction,
@@ -161,14 +164,15 @@ export default async function AttendanceSessionPage({
         "scheduled" && (
         <section className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-5">
           <h2 className="font-bold text-slate-950">
-            Ready to take attendance?
+            Ready to take
+            attendance?
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Starting attendance will
-            open this session and
-            allow staff to check
-            members in.
+            Starting attendance
+            will open this session
+            and allow staff to
+            check members in.
           </p>
 
           <form
@@ -201,35 +205,13 @@ export default async function AttendanceSessionPage({
 
       {session.status ===
         "open" && (
-        <section className="mt-5 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
-            <Search
-              size={23}
-              className="text-emerald-700"
-            />
-          </div>
-
-          <h2 className="mt-4 text-lg font-bold text-slate-950">
-            Attendance is Open
-          </h2>
-
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            This session is ready
-            for member check-in.
-            Manual member search and
-            check-in will be added
-            in #42.
-          </p>
-
-          <button
-            type="button"
-            disabled
-            className="mt-5 flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-400"
-          >
-            <Search size={18} />
-            Manual Check-In
-          </button>
-        </section>
+        <div className="mt-5">
+          <ManualCheckInPanel
+            sessionId={
+              session.id
+            }
+          />
+        </div>
       )}
 
       {session.status ===

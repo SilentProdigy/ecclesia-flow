@@ -59,3 +59,63 @@ export interface AttendanceRecord {
 
   updated_at: string;
 }
+
+export interface ManualCheckInMember {
+  id: string;
+
+  member_no: number;
+
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  suffix: string | null;
+  preferred_name: string | null;
+
+  phone: string | null;
+  email: string | null;
+
+  member_type: MemberType;
+
+  photo_path: string | null;
+  photo_url: string | null;
+
+  already_checked_in: boolean;
+}
+
+export type AttendanceMemberSearchResult =
+  | {
+      success: true;
+      members:
+        ManualCheckInMember[];
+    }
+  | {
+      success: false;
+      members: [];
+      message: string;
+    };
+
+export type ManualMemberCheckInResult =
+  | {
+      success: true;
+      status: "checked_in";
+      memberId: string;
+      attendanceRecordId: string;
+      checkedInAt: string;
+      displayName: string;
+    }
+  | {
+      success: true;
+      status:
+        "already_checked_in";
+      memberId: string;
+      attendanceRecordId:
+        string | null;
+      checkedInAt:
+        string | null;
+      displayName: string;
+    }
+  | {
+      success: false;
+      status: "error";
+      message: string;
+    };
