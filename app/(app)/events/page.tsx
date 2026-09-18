@@ -214,6 +214,12 @@ export default async function EventsPage({
     directory.page <
     directory.totalPages;
 
+  const hasFilters =
+    q.length > 0 ||
+    type !== "all" ||
+    status !== "all" ||
+    recurrence !== "all";
+
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 pb-28">
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -287,7 +293,7 @@ export default async function EventsPage({
           )}
         </div>
       ) : (
-        <section className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+        <section className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100">
             <CalendarDays
               size={23}
@@ -296,31 +302,25 @@ export default async function EventsPage({
           </div>
 
           <h2 className="mt-4 font-semibold text-slate-950">
-            No events found
+            {hasFilters
+              ? "No matching events"
+              : "No events yet"}
           </h2>
 
           <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-slate-500">
-            {q ||
-            type !== "all" ||
-            status !== "all" ||
-            recurrence !==
-              "all"
-              ? "Try changing your search or filters."
-              : "Church events and services will appear here once they are created."}
+            {hasFilters
+              ? "Try changing your search or removing one of the filters."
+              : "Create your first service, meeting, or church activity."}
           </p>
 
           {isAdmin &&
-          !q &&
-          type === "all" &&
-          status === "all" &&
-          recurrence ===
-            "all" ? (
+          !hasFilters ? (
             <Link
               href="/events/new"
-              className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
             >
               <Plus
-                size={17}
+                size={18}
               />
               Create first event
             </Link>
@@ -382,7 +382,9 @@ export default async function EventsPage({
         </div>
       ) : null}
 
-      {isAdmin ? (
+      {isAdmin &&
+      directory.events.length >
+        0 ? (
         <Link
           href="/events/new"
           aria-label="Add event"
