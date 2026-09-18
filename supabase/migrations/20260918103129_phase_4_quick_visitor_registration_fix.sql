@@ -1,0 +1,3 @@
+-- Remote migration-history alignment marker.
+-- The finalized register_visitor_and_check_in function
+-- is already represented in the preceding local migration.

@@ -7,6 +7,7 @@ import type {
 import {
   attendanceMethodSchema,
   manualCheckInSchema,
+  quickVisitorCheckInSchema,
   voidAttendanceSchema,
 } from "./attendance-schema";
 
@@ -18,6 +19,11 @@ export type AttendanceMethod =
 export type ManualCheckInInput =
   z.infer<
     typeof manualCheckInSchema
+  >;
+
+export type QuickVisitorCheckInInput =
+  z.infer<
+    typeof quickVisitorCheckInSchema
   >;
 
 export type VoidAttendanceInput =
@@ -66,56 +72,105 @@ export interface ManualCheckInMember {
   member_no: number;
 
   first_name: string;
-  middle_name: string | null;
+  middle_name:
+    string | null;
   last_name: string;
-  suffix: string | null;
-  preferred_name: string | null;
+  suffix:
+    string | null;
+  preferred_name:
+    string | null;
 
-  phone: string | null;
-  email: string | null;
+  phone:
+    string | null;
 
-  member_type: MemberType;
+  email:
+    string | null;
 
-  photo_path: string | null;
-  photo_url: string | null;
+  member_type:
+    MemberType;
 
-  already_checked_in: boolean;
+  photo_path:
+    string | null;
+
+  photo_url:
+    string | null;
+
+  already_checked_in:
+    boolean;
 }
 
 export type AttendanceMemberSearchResult =
   | {
       success: true;
+
       members:
         ManualCheckInMember[];
     }
   | {
       success: false;
+
       members: [];
+
       message: string;
     };
 
 export type ManualMemberCheckInResult =
   | {
       success: true;
-      status: "checked_in";
+
+      status:
+        "checked_in";
+
       memberId: string;
-      attendanceRecordId: string;
+
+      attendanceRecordId:
+        string;
+
       checkedInAt: string;
+
       displayName: string;
     }
   | {
       success: true;
+
       status:
         "already_checked_in";
+
       memberId: string;
+
       attendanceRecordId:
         string | null;
+
       checkedInAt:
         string | null;
+
       displayName: string;
     }
   | {
       success: false;
+
       status: "error";
+
+      message: string;
+    };
+
+export type QuickVisitorRegistrationResult =
+  | {
+      success: true;
+
+      memberId: string;
+
+      memberNo: number;
+
+      attendanceRecordId:
+        string;
+
+      checkedInAt: string;
+
+      displayName: string;
+    }
+  | {
+      success: false;
+
       message: string;
     };

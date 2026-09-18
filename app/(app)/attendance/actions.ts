@@ -11,8 +11,11 @@ import {
 import {
   eventSessionIdSchema,
   manualCheckInSchema,
+  quickVisitorCheckInSchema,
   type AttendanceMemberSearchResult,
   type ManualMemberCheckInResult,
+  type QuickVisitorRegistrationResult,
+  type QuickVisitorCheckInInput,
 } from "@/lib/attendance";
 
 import {
@@ -70,9 +73,12 @@ async function getAuthenticatedStaff() {
 function getMemberDisplayName(
   member: {
     first_name: string;
+
     middle_name:
       string | null;
+
     last_name: string;
+
     suffix:
       string | null;
   }
@@ -211,6 +217,7 @@ export async function searchAttendanceMembersAction({
   query,
 }: {
   eventSessionId: string;
+
   query: string;
 }): Promise<AttendanceMemberSearchResult> {
   const parsed =
@@ -272,6 +279,7 @@ export async function manualCheckInMemberAction({
   memberId,
 }: {
   eventSessionId: string;
+
   memberId: string;
 }): Promise<ManualMemberCheckInResult> {
   const parsed =
@@ -404,6 +412,7 @@ export async function manualCheckInMemberAction({
   const {
     data:
       existingAttendance,
+
     error:
       existingAttendanceError,
   } = await supabase
@@ -469,6 +478,7 @@ export async function manualCheckInMemberAction({
   const {
     data:
       attendanceRecord,
+
     error:
       attendanceError,
   } = await supabase
@@ -559,6 +569,197 @@ export async function manualCheckInMemberAction({
     checkedInAt:
       attendanceRecord
         .checked_in_at,
+
+    displayName,
+  };
+}
+
+interface QuickVisitorRpcRow {
+  member_id: string;
+
+  member_no: number;
+
+  attendance_record_id:
+    string;
+
+  checked_in_at: string;
+}
+
+export async function registerVisitorAndCheckInAction(
+  input:
+    QuickVisitorCheckInInput
+): Promise<QuickVisitorRegistrationResult> {
+  const parsed =
+    quickVisitorCheckInSchema.safeParse(
+      input
+    );
+
+  if (!parsed.success) {
+    return {
+      success: false,
+
+      message:
+        parsed.error.issues[0]
+          ?.message ??
+        "Please check the visitor details.",
+    };
+  }
+
+  const auth =
+    await getAuthenticatedStaff();
+
+  if (!auth) {
+    return {
+      success: false,
+
+      message:
+        "Your staff session is no longer available.",
+    };
+  }
+
+  const {
+    supabase,
+  } = auth;
+
+  const {
+    data: session,
+    error: sessionError,
+  } = await supabase
+    .from(
+      "event_sessions"
+    )
+    .select(
+      "id, status"
+    )
+    .eq(
+      "id",
+      parsed.data
+        .event_session_id
+    )
+    .maybeSingle();
+
+  if (
+    sessionError ||
+    !session
+  ) {
+    return {
+      success: false,
+
+      message:
+        "This attendance session is unavailable.",
+    };
+  }
+
+  if (
+    session.status !==
+    "open"
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Attendance is no longer open for this session.",
+    };
+  }
+
+  const {
+    data,
+    error,
+  } = await supabase.rpc(
+    "register_visitor_and_check_in",
+    {
+      p_event_session_id:
+        parsed.data
+          .event_session_id,
+
+      p_first_name:
+        parsed.data
+          .first_name,
+
+      p_last_name:
+        parsed.data
+          .last_name,
+
+      p_phone:
+        parsed.data.phone,
+
+      p_email:
+        parsed.data.email,
+    }
+  );
+
+  if (error) {
+    console.error(
+      "Unable to register and check in visitor:",
+      error
+    );
+
+    if (
+      error.message.includes(
+        "Attendance session is not open"
+      )
+    ) {
+      return {
+        success: false,
+
+        message:
+          "Attendance is no longer open for this session.",
+      };
+    }
+
+    return {
+      success: false,
+
+      message:
+        "Visitor could not be registered. Please try again.",
+    };
+  }
+
+  const row =
+    (
+      data as
+        | QuickVisitorRpcRow[]
+        | null
+    )?.[0];
+
+  if (!row) {
+    return {
+      success: false,
+
+      message:
+        "Visitor registration did not complete.",
+    };
+  }
+
+  const displayName =
+    `${parsed.data.first_name} ${parsed.data.last_name}`;
+
+  revalidatePath(
+    "/members"
+  );
+
+  revalidatePath(
+    "/attendance"
+  );
+
+  revalidatePath(
+    `/attendance/${parsed.data.event_session_id}`
+  );
+
+  return {
+    success: true,
+
+    memberId:
+      row.member_id,
+
+    memberNo:
+      row.member_no,
+
+    attendanceRecordId:
+      row.attendance_record_id,
+
+    checkedInAt:
+      row.checked_in_at,
 
     displayName,
   };

@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   LoaderCircle,
   Search,
+  UserPlus,
   UserRound,
   XCircle,
 } from "lucide-react";
@@ -26,12 +27,17 @@ import {
 
 import type {
   ManualCheckInMember,
+  QuickVisitorRegistrationResult,
 } from "@/lib/attendance";
 
 import {
   manualCheckInMemberAction,
   searchAttendanceMembersAction,
 } from "@/app/(app)/attendance/actions";
+
+import {
+  QuickVisitorRegistration,
+} from "./quick-visitor-registration";
 
 interface ManualCheckInPanelProps {
   sessionId: string;
@@ -102,6 +108,12 @@ export function ManualCheckInPanel({
       FeedbackState | null
     >(null);
 
+  const [
+    visitorRegistrationOpen,
+    setVisitorRegistrationOpen,
+  ] =
+    useState(false);
+
   useEffect(() => {
     const requestId =
       ++requestIdRef.current;
@@ -143,6 +155,7 @@ export function ManualCheckInPanel({
 
             setFeedback({
               type: "error",
+
               message:
                 result.message,
             });
@@ -205,6 +218,7 @@ export function ManualCheckInPanel({
     ) {
       setFeedback({
         type: "error",
+
         message:
           result.message,
       });
@@ -222,6 +236,7 @@ export function ManualCheckInPanel({
             result.memberId
               ? {
                   ...item,
+
                   already_checked_in:
                     true,
                 }
@@ -235,12 +250,14 @@ export function ManualCheckInPanel({
     ) {
       setFeedback({
         type: "warning",
+
         message:
           `${result.displayName} is already checked in.`,
       });
     } else {
       setFeedback({
         type: "success",
+
         message:
           `${result.displayName} checked in successfully.`,
       });
@@ -263,128 +280,235 @@ export function ManualCheckInPanel({
     );
   }
 
+  function handleVisitorRegistered(
+    result: Extract<
+      QuickVisitorRegistrationResult,
+      {
+        success: true;
+      }
+    >
+  ) {
+    setVisitorRegistrationOpen(
+      false
+    );
+
+    setQuery("");
+
+    setFeedback({
+      type: "success",
+
+      message:
+        `${result.displayName} was registered as a visitor and checked in successfully.`,
+    });
+
+    setRefreshVersion(
+      (current) =>
+        current + 1
+    );
+
+    router.refresh();
+
+    window.setTimeout(
+      () => {
+        inputRef.current?.focus();
+      },
+      100
+    );
+  }
+
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div>
-        <h2 className="text-lg font-bold text-slate-950">
-          Manual Check-In
-        </h2>
+    <>
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold text-slate-950">
+            Manual Check-In
+          </h2>
 
-        <p className="mt-1 text-sm leading-6 text-slate-500">
-          Search for an active
-          member or attendee and
-          check them in.
-        </p>
-      </div>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Search for an active
+            member or attendee and
+            check them in.
+          </p>
+        </div>
 
-      {feedback && (
-        <FeedbackMessage
-          feedback={
-            feedback
-          }
-        />
-      )}
-
-      <div className="relative mt-5">
-        <Search
-          size={19}
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-        />
-
-        <input
-          ref={inputRef}
-          type="search"
-          value={query}
-          onChange={(
-            event
-          ) => {
-            setQuery(
-              event.target.value
-            );
-
-            setFeedback(
-              null
-            );
-          }}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="Search name, phone, email or EC number..."
-          className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-11 text-sm text-black placeholder:text-slate-400 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
-        />
-
-        {isSearching && (
-          <LoaderCircle
-            size={18}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-slate-400"
+        {feedback && (
+          <FeedbackMessage
+            feedback={
+              feedback
+            }
           />
         )}
-      </div>
 
-      <div className="mt-4">
-        {!isSearching &&
-          members.length ===
+        <div className="relative mt-5">
+          <Search
+            size={19}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(
+              event
+            ) => {
+              setQuery(
+                event.target
+                  .value
+              );
+
+              setFeedback(
+                null
+              );
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="Search name, phone, email or EC number..."
+            className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-11 text-sm text-black placeholder:text-slate-400 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
+          />
+
+          {isSearching && (
+            <LoaderCircle
+              size={18}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-slate-400"
+            />
+          )}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-800">
+              New visitor?
+            </p>
+
+            <p className="mt-0.5 text-xs leading-5 text-slate-500">
+              Register and check
+              them in without
+              leaving attendance.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFeedback(
+                null
+              );
+
+              setVisitorRegistrationOpen(
+                true
+              );
+            }}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            <UserPlus
+              size={15}
+            />
+
+            Register
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {!isSearching &&
+            members.length ===
+              0 && (
+              <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center">
+                <UserRound
+                  size={25}
+                  className="mx-auto text-slate-400"
+                />
+
+                <p className="mt-3 text-sm font-semibold text-slate-700">
+                  No members found
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Try another name,
+                  phone number,
+                  email address or
+                  member number.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisitorRegistrationOpen(
+                      true
+                    )
+                  }
+                  className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-semibold text-white"
+                >
+                  <UserPlus
+                    size={15}
+                  />
+
+                  Register Visitor
+                </button>
+              </div>
+            )}
+
+          {members.length >
             0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center">
-              <UserRound
-                size={25}
-                className="mx-auto text-slate-400"
-              />
-
-              <p className="mt-3 text-sm font-semibold text-slate-700">
-                No members found
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Try another name,
-                phone number,
-                email address or
-                member number.
-              </p>
+            <div className="space-y-2">
+              {members.map(
+                (member) => (
+                  <MemberCheckInRow
+                    key={
+                      member.id
+                    }
+                    member={
+                      member
+                    }
+                    isPending={
+                      pendingMemberId ===
+                      member.id
+                    }
+                    disabled={
+                      Boolean(
+                        pendingMemberId
+                      )
+                    }
+                    onCheckIn={() =>
+                      handleCheckIn(
+                        member
+                      )
+                    }
+                  />
+                )
+              )}
             </div>
           )}
+        </div>
 
-        {members.length >
-          0 && (
-          <div className="space-y-2">
-            {members.map(
-              (member) => (
-                <MemberCheckInRow
-                  key={
-                    member.id
-                  }
-                  member={
-                    member
-                  }
-                  isPending={
-                    pendingMemberId ===
-                    member.id
-                  }
-                  disabled={
-                    Boolean(
-                      pendingMemberId
-                    )
-                  }
-                  onCheckIn={() =>
-                    handleCheckIn(
-                      member
-                    )
-                  }
-                />
-              )
-            )}
-          </div>
-        )}
-      </div>
+        {!query.trim() &&
+          members.length >
+            0 && (
+            <p className="mt-3 text-center text-xs text-slate-400">
+              Showing up to 20
+              active people. Search
+              to narrow the list.
+            </p>
+          )}
+      </section>
 
-      {!query.trim() &&
-        members.length > 0 && (
-        <p className="mt-3 text-center text-xs text-slate-400">
-          Showing up to 20 active
-          people. Search to narrow
-          the list.
-        </p>
-      )}
-    </section>
+      <QuickVisitorRegistration
+        sessionId={
+          sessionId
+        }
+        open={
+          visitorRegistrationOpen
+        }
+        onClose={() =>
+          setVisitorRegistrationOpen(
+            false
+          )
+        }
+        onRegistered={
+          handleVisitorRegistered
+        }
+      />
+    </>
   );
 }
 
@@ -458,9 +582,7 @@ function MemberCheckInRow({
             )}
           </span>
 
-          <span>
-            •
-          </span>
+          <span>•</span>
 
           <span>
             {getMemberTypeLabel(

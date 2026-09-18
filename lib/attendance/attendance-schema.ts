@@ -16,6 +16,59 @@ export const eventSessionIdSchema =
       "Invalid event session."
     );
 
+const optionalVisitorPhoneSchema =
+  z
+    .union([
+      z
+        .string()
+        .trim()
+        .min(
+          7,
+          "Phone number must contain at least 7 characters."
+        )
+        .max(
+          30,
+          "Phone number is too long."
+        )
+        .regex(
+          /^[0-9+\-()\s.]+$/,
+          "Please enter a valid phone number."
+        ),
+
+      z.literal(""),
+      z.null(),
+      z.undefined(),
+    ])
+    .transform(
+      (value) =>
+        value || null
+    );
+
+const optionalVisitorEmailSchema =
+  z
+    .union([
+      z
+        .string()
+        .trim()
+        .email(
+          "Please enter a valid email address."
+        )
+        .max(
+          254,
+          "Email address is too long."
+        ),
+
+      z.literal(""),
+      z.null(),
+      z.undefined(),
+    ])
+    .transform(
+      (value) =>
+        value
+          ? value.toLowerCase()
+          : null
+    );
+
 export const manualCheckInSchema =
   z.object({
     event_session_id:
@@ -42,6 +95,42 @@ export const manualCheckInSchema =
             ? value
             : null
       ),
+  });
+
+export const quickVisitorCheckInSchema =
+  z.object({
+    event_session_id:
+      eventSessionIdSchema,
+
+    first_name: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "First name is required."
+      )
+      .max(
+        100,
+        "First name is too long."
+      ),
+
+    last_name: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "Last name is required."
+      )
+      .max(
+        100,
+        "Last name is too long."
+      ),
+
+    phone:
+      optionalVisitorPhoneSchema,
+
+    email:
+      optionalVisitorEmailSchema,
   });
 
 export const voidAttendanceSchema =
