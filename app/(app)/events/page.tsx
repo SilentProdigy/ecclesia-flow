@@ -1,8 +1,11 @@
 import Link from "next/link";
 
 import {
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Plus,
 } from "lucide-react";
 
@@ -125,7 +128,10 @@ function buildEventsHref({
     new URLSearchParams();
 
   if (q) {
-    params.set("q", q);
+    params.set(
+      "q",
+      q,
+    );
   }
 
   if (type !== "all") {
@@ -158,11 +164,11 @@ function buildEventsHref({
     );
   }
 
-  const queryString =
+  const query =
     params.toString();
 
-  return queryString
-    ? `/events?${queryString}`
+  return query
+    ? `/events?${query}`
     : "/events";
 }
 
@@ -176,7 +182,9 @@ export default async function EventsPage({
     params.q?.trim() ?? "";
 
   const type =
-    parseType(params.type);
+    parseType(
+      params.type,
+    );
 
   const status =
     parseStatus(
@@ -189,7 +197,9 @@ export default async function EventsPage({
     );
 
   const page =
-    parsePage(params.page);
+    parsePage(
+      params.page,
+    );
 
   const created =
     params.created === "1";
@@ -212,28 +222,55 @@ export default async function EventsPage({
   const isAdmin =
     currentRole === "admin";
 
-  const hasPrevious =
-    directory.page > 1;
-
-  const hasNext =
-    directory.page <
-    directory.totalPages;
-
   const hasFilters =
-    q.length > 0 ||
+    Boolean(q) ||
     type !== "all" ||
     status !== "all" ||
     recurrence !== "all";
 
+  const firstResult =
+    directory.total === 0
+      ? 0
+      : (directory.page - 1) *
+          directory.pageSize +
+        1;
+
+  const lastResult =
+    Math.min(
+      directory.page *
+        directory.pageSize,
+      directory.total,
+    );
+
+  const previousUrl =
+    buildEventsHref({
+      q,
+      type,
+      status,
+      recurrence,
+      page:
+        directory.page - 1,
+    });
+
+  const nextUrl =
+    buildEventsHref({
+      q,
+      type,
+      status,
+      recurrence,
+      page:
+        directory.page + 1,
+    });
+
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 pb-28">
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <section className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">
             Events
           </h1>
 
-          <p className="mt-1 text-sm leading-6 text-slate-500">
+          <p className="mt-1 text-sm text-slate-500">
             Manage church
             services, meetings,
             and scheduled
@@ -241,21 +278,41 @@ export default async function EventsPage({
           </p>
         </div>
 
-        {isAdmin ? (
+        <div className="flex shrink-0 gap-2">
           <Link
-            href="/events/new"
-            className="hidden h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 sm:inline-flex"
+            href="/events/schedule"
+            aria-label="Church Schedule"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
           >
-            <Plus
+            <CalendarClock
               size={18}
             />
-            Add Event
-          </Link>
-        ) : null}
-      </div>
 
-      {created ? (
-        <div className="mb-4 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <span className="hidden sm:inline">
+              Schedule
+            </span>
+          </Link>
+
+          {isAdmin && (
+            <Link
+              href="/events/new"
+              aria-label="Add Event"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 sm:px-4"
+            >
+              <Plus
+                size={18}
+              />
+
+              <span className="hidden sm:inline">
+                Add Event
+              </span>
+            </Link>
+          )}
+        </div>
+      </section>
+
+      {created && (
+        <section className="mb-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <CheckCircle2
             size={20}
             className="mt-0.5 shrink-0 text-emerald-600"
@@ -272,41 +329,52 @@ export default async function EventsPage({
               are ready.
             </p>
           </div>
-        </div>
-      ) : null}
+        </section>
+      )}
 
-      <EventDirectoryToolbar
-        q={q}
-        type={type}
-        status={status}
-        recurrence={
-          recurrence
-        }
-      />
-
-      <div className="mt-5 flex items-center justify-between">
-        <p className="text-sm font-medium text-slate-700">
-          {directory.total ===
-          1
-            ? "1 event"
-            : `${directory.total} events`}
-        </p>
-
-        {directory.total >
-        0 ? (
-          <p className="text-xs text-slate-400">
-            Page{" "}
-            {directory.page} of{" "}
-            {
-              directory.totalPages
-            }
-          </p>
-        ) : null}
+      <div className="mb-5">
+        <EventDirectoryToolbar
+          q={q}
+          type={type}
+          status={status}
+          recurrence={
+            recurrence
+          }
+        />
       </div>
 
-      {directory.events
-        .length > 0 ? (
-        <div className="mt-3 space-y-3">
+      <section className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">
+            {directory.total ===
+            1
+              ? "1 event"
+              : `${directory.total} events`}
+          </p>
+
+          {hasFilters && (
+            <p className="mt-0.5 text-xs text-slate-400">
+              Matching current
+              search and filters
+            </p>
+          )}
+        </div>
+
+        {directory.total >
+          0 && (
+          <p className="text-xs text-slate-400">
+            {firstResult}–
+            {lastResult} of{" "}
+            {
+              directory.total
+            }
+          </p>
+        )}
+      </section>
+
+      {directory.events.length >
+      0 ? (
+        <div className="space-y-3">
           {directory.events.map(
             (event) => (
               <EventCard
@@ -321,108 +389,100 @@ export default async function EventsPage({
           )}
         </div>
       ) : (
-        <section className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100">
+        <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
             <CalendarDays
-              size={23}
+              size={26}
               className="text-slate-500"
             />
           </div>
 
           <h2 className="mt-4 font-semibold text-slate-950">
             {hasFilters
-              ? "No matching events"
+              ? "No events found"
               : "No events yet"}
           </h2>
 
-          <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-slate-500">
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
             {hasFilters
-              ? "Try changing your search or removing one of the filters."
-              : "Create your first service, meeting, or church activity."}
+              ? "Try another search or change your filters."
+              : "Create your first church service, meeting, or scheduled activity."}
           </p>
 
           {isAdmin &&
-          !hasFilters ? (
+            !hasFilters && (
             <Link
               href="/events/new"
-              className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white"
             >
               <Plus
                 size={18}
               />
-              Create first event
+              Add First Event
             </Link>
-          ) : null}
+          )}
         </section>
       )}
 
       {directory.totalPages >
-      1 ? (
-        <div className="mt-6 flex items-center justify-between gap-3">
-          {hasPrevious ? (
+        1 && (
+        <nav className="mt-6 flex items-center justify-between border-t border-slate-200 pt-5">
+          {directory.page >
+          1 ? (
             <Link
-              href={buildEventsHref({
-                q,
-                type,
-                status,
-                recurrence,
-                page:
-                  directory.page -
-                  1,
-              })}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              href={
+                previousUrl
+              }
+              scroll={false}
+              className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
+              <ChevronLeft
+                size={17}
+              />
               Previous
             </Link>
           ) : (
-            <span className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm font-semibold text-slate-300">
-              Previous
-            </span>
+            <div />
           )}
 
-          <span className="text-sm text-slate-500">
-            {directory.page} /{" "}
+          <span className="text-xs font-medium text-slate-500">
+            Page{" "}
+            {directory.page} of{" "}
             {
               directory.totalPages
             }
           </span>
 
-          {hasNext ? (
+          {directory.page <
+          directory.totalPages ? (
             <Link
-              href={buildEventsHref({
-                q,
-                type,
-                status,
-                recurrence,
-                page:
-                  directory.page +
-                  1,
-              })}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              href={nextUrl}
+              scroll={false}
+              className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Next
+
+              <ChevronRight
+                size={17}
+              />
             </Link>
           ) : (
-            <span className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm font-semibold text-slate-300">
-              Next
-            </span>
+            <div />
           )}
-        </div>
-      ) : null}
+        </nav>
+      )}
 
       {isAdmin &&
-      directory.events.length >
-        0 ? (
+        directory.events.length >
+          0 && (
         <Link
           href="/events/new"
-          aria-label="Add event"
-          className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg transition hover:bg-slate-800 sm:hidden"
+          aria-label="Add Event"
+          className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-xl transition hover:bg-slate-800 sm:hidden"
         >
-          <Plus
-            size={24}
-          />
+          <Plus size={24} />
         </Link>
-      ) : null}
+      )}
     </div>
   );
 }
