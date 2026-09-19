@@ -6,8 +6,10 @@ import {
 } from "react";
 
 import {
+  CloudUpload,
   LoaderCircle,
   UserPlus,
+  WifiOff,
   X,
 } from "lucide-react";
 
@@ -15,9 +17,27 @@ import {
   registerVisitorAndCheckInAction,
 } from "@/app/(app)/attendance/actions";
 
-import type {
-  QuickVisitorRegistrationResult,
+import {
+  quickVisitorCheckInSchema,
+  type QuickVisitorRegistrationResult,
 } from "@/lib/attendance";
+
+import {
+  queueOfflineVisitorRegistration,
+} from "@/lib/attendance/attendance-offline-db";
+
+interface OfflineQueuedVisitor {
+  memberId: string;
+
+  attendanceRecordId:
+    string;
+
+  checkedInAt:
+    string;
+
+  displayName:
+    string;
+}
 
 interface QuickVisitorRegistrationProps {
   sessionId: string;
@@ -34,6 +54,11 @@ interface QuickVisitorRegistrationProps {
       }
     >
   ) => void;
+
+  onQueued: (
+    visitor:
+      OfflineQueuedVisitor
+  ) => void;
 }
 
 export function QuickVisitorRegistration({
@@ -41,6 +66,7 @@ export function QuickVisitorRegistration({
   open,
   onClose,
   onRegistered,
+  onQueued,
 }: QuickVisitorRegistrationProps) {
   const [
     firstName,
@@ -80,6 +106,44 @@ export function QuickVisitorRegistration({
   ] =
     useState(false);
 
+  const [
+    isOnline,
+    setIsOnline,
+  ] =
+    useState(true);
+
+  useEffect(() => {
+    function updateOnlineStatus() {
+      setIsOnline(
+        navigator.onLine
+      );
+    }
+
+    updateOnlineStatus();
+
+    window.addEventListener(
+      "online",
+      updateOnlineStatus
+    );
+
+    window.addEventListener(
+      "offline",
+      updateOnlineStatus
+    );
+
+    return () => {
+      window.removeEventListener(
+        "online",
+        updateOnlineStatus
+      );
+
+      window.removeEventListener(
+        "offline",
+        updateOnlineStatus
+      );
+    };
+  }, []);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -102,7 +166,8 @@ export function QuickVisitorRegistration({
 
   useEffect(() => {
     function handleKeyDown(
-      event: KeyboardEvent
+      event:
+        KeyboardEvent
     ) {
       if (
         event.key ===
@@ -144,11 +209,62 @@ export function QuickVisitorRegistration({
   }
 
   function close() {
-    if (isSubmitting) {
+    if (
+      isSubmitting
+    ) {
       return;
     }
 
     onClose();
+  }
+
+  async function queueOfflineVisitor(
+    parsed: {
+      first_name: string;
+
+      last_name: string;
+
+      phone:
+        string | null;
+
+      email:
+        string | null;
+    }
+  ) {
+    const item =
+      await queueOfflineVisitorRegistration({
+        sessionId,
+
+        firstName:
+          parsed.first_name,
+
+        lastName:
+          parsed.last_name,
+
+        phone:
+          parsed.phone,
+
+        email:
+          parsed.email,
+      });
+
+    const displayName =
+      `${parsed.first_name} ${parsed.last_name}`;
+
+    resetForm();
+
+    onQueued({
+      memberId:
+        item.member_id,
+
+      attendanceRecordId:
+        item.attendance_record_id,
+
+      checkedInAt:
+        item.checked_in_at,
+
+      displayName,
+    });
   }
 
   async function handleSubmit(
@@ -157,15 +273,16 @@ export function QuickVisitorRegistration({
   ) {
     event.preventDefault();
 
-    if (isSubmitting) {
+    if (
+      isSubmitting
+    ) {
       return;
     }
 
     setError(null);
-    setIsSubmitting(true);
 
-    const result =
-      await registerVisitorAndCheckInAction({
+    const parsed =
+      quickVisitorCheckInSchema.safeParse({
         event_session_id:
           sessionId,
 
@@ -180,21 +297,87 @@ export function QuickVisitorRegistration({
         email,
       });
 
-    setIsSubmitting(false);
-
-    if (!result.success) {
+    if (
+      !parsed.success
+    ) {
       setError(
-        result.message
+        parsed.error
+          .issues[0]
+          ?.message ??
+          "Please check the visitor details."
       );
 
       return;
     }
 
-    resetForm();
-
-    onRegistered(
-      result
+    setIsSubmitting(
+      true
     );
+
+    try {
+      if (
+        !navigator.onLine
+      ) {
+        await queueOfflineVisitor(
+          parsed.data
+        );
+
+        return;
+      }
+
+      const result =
+        await registerVisitorAndCheckInAction(
+          parsed.data
+        );
+
+      if (
+        !result.success
+      ) {
+        setError(
+          result.message
+        );
+
+        return;
+      }
+
+      resetForm();
+
+      onRegistered(
+        result
+      );
+    } catch (submitError) {
+      console.error(
+        "Visitor registration failed:",
+        submitError
+      );
+
+      if (
+        !navigator.onLine
+      ) {
+        try {
+          await queueOfflineVisitor(
+            parsed.data
+          );
+
+          return;
+        } catch (
+          queueError
+        ) {
+          console.error(
+            "Unable to queue visitor offline:",
+            queueError
+          );
+        }
+      }
+
+      setError(
+        "Visitor registration could not be completed. Please try again."
+      );
+    } finally {
+      setIsSubmitting(
+        false
+      );
+    }
   }
 
   return (
@@ -202,7 +385,9 @@ export function QuickVisitorRegistration({
       <button
         type="button"
         aria-label="Close visitor registration"
-        onClick={close}
+        onClick={
+          close
+        }
         disabled={
           isSubmitting
         }
@@ -229,21 +414,26 @@ export function QuickVisitorRegistration({
 
             <p className="mt-1 text-sm leading-5 text-slate-500">
               Create their visitor
-              profile and check them
-              into this session.
+              profile and check
+              them into this
+              session.
             </p>
           </div>
 
           <button
             type="button"
-            onClick={close}
+            onClick={
+              close
+            }
             disabled={
               isSubmitting
             }
             aria-label="Close"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 disabled:opacity-50"
           >
-            <X size={18} />
+            <X
+              size={18}
+            />
           </button>
         </div>
 
@@ -253,6 +443,31 @@ export function QuickVisitorRegistration({
           }
         >
           <div className="space-y-5 px-6 py-6">
+            {!isOnline && (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <WifiOff
+                  size={18}
+                  className="mt-0.5 shrink-0 text-amber-700"
+                />
+
+                <div>
+                  <p className="text-xs font-semibold text-amber-900">
+                    Offline visitor
+                    registration
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-amber-700">
+                    This visitor and
+                    their check-in
+                    will be saved on
+                    this device and
+                    synchronized when
+                    internet returns.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700">
                 {error}
@@ -283,7 +498,9 @@ export function QuickVisitorRegistration({
                   }
                   autoComplete="given-name"
                   placeholder="First name"
-                  className={inputClassName}
+                  className={
+                    inputClassName
+                  }
                 />
               </Field>
 
@@ -310,7 +527,9 @@ export function QuickVisitorRegistration({
                   }
                   autoComplete="family-name"
                   placeholder="Last name"
-                  className={inputClassName}
+                  className={
+                    inputClassName
+                  }
                 />
               </Field>
             </div>
@@ -321,7 +540,9 @@ export function QuickVisitorRegistration({
             >
               <input
                 type="tel"
-                value={phone}
+                value={
+                  phone
+                }
                 onChange={(
                   event
                 ) =>
@@ -330,11 +551,15 @@ export function QuickVisitorRegistration({
                       .value
                   )
                 }
-                maxLength={30}
+                maxLength={
+                  30
+                }
                 autoComplete="tel"
                 inputMode="tel"
                 placeholder="Phone number"
-                className={inputClassName}
+                className={
+                  inputClassName
+                }
               />
             </Field>
 
@@ -344,7 +569,9 @@ export function QuickVisitorRegistration({
             >
               <input
                 type="email"
-                value={email}
+                value={
+                  email
+                }
                 onChange={(
                   event
                 ) =>
@@ -353,11 +580,15 @@ export function QuickVisitorRegistration({
                       .value
                   )
                 }
-                maxLength={254}
+                maxLength={
+                  254
+                }
                 autoComplete="email"
                 inputMode="email"
                 placeholder="Email address"
-                className={inputClassName}
+                className={
+                  inputClassName
+                }
               />
             </Field>
 
@@ -367,18 +598,18 @@ export function QuickVisitorRegistration({
               </p>
 
               <p className="mt-1 text-xs leading-5 text-slate-500">
-                This person will be
-                saved as an active
-                Visitor. Their first
-                attended date will be
-                this event session.
+                They will be saved
+                as an active Visitor.
+                Their first attended
+                date will be this
+                event session.
               </p>
             </div>
 
             <p className="text-xs leading-5 text-slate-400">
               Search the member
-              directory first whenever
-              possible to avoid creating
+              directory first when
+              possible to avoid
               duplicate profiles.
             </p>
           </div>
@@ -387,7 +618,9 @@ export function QuickVisitorRegistration({
             <div className="grid grid-cols-[110px_1fr] gap-3">
               <button
                 type="button"
-                onClick={close}
+                onClick={
+                  close
+                }
                 disabled={
                   isSubmitting
                 }
@@ -410,15 +643,25 @@ export function QuickVisitorRegistration({
                       className="animate-spin"
                     />
 
-                    Registering...
+                    {isOnline
+                      ? "Registering..."
+                      : "Saving..."}
                   </>
-                ) : (
+                ) : isOnline ? (
                   <>
                     <UserPlus
                       size={17}
                     />
 
                     Register & Check In
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload
+                      size={17}
+                    />
+
+                    Save Offline & Check In
                   </>
                 )}
               </button>

@@ -12,6 +12,7 @@ import {
 
 import {
   syncOfflineAttendanceCheckInAction,
+  syncOfflineVisitorRegistrationAction,
 } from "@/app/(app)/attendance/offline-actions";
 
 import {
@@ -20,7 +21,13 @@ import {
   removeOfflineAttendanceOutboxItem,
   setCachedMemberCheckedIn,
   updateOfflineAttendanceOutboxItem,
+  upsertCachedAttendanceMember,
 } from "@/lib/attendance/attendance-offline-db";
+
+import type {
+  OfflineAttendanceOutboxItem,
+  OfflineSyncFailureCode,
+} from "@/lib/attendance";
 
 interface AttendanceOfflineSyncProps {
   sessionId: string;
@@ -38,6 +45,61 @@ export function AttendanceOfflineSync({
 
   const syncingRef =
     useRef(false);
+
+  const markFailure =
+    useCallback(
+      async (
+        item:
+          OfflineAttendanceOutboxItem,
+        failure: {
+          code:
+            OfflineSyncFailureCode;
+
+          retryable:
+            boolean;
+
+          message:
+            string;
+        }
+      ) => {
+        if (
+          failure.retryable
+        ) {
+          await updateOfflineAttendanceOutboxItem(
+            item.member_key,
+            {
+              status:
+                "pending",
+
+              lastError:
+                failure.message,
+            }
+          );
+        } else {
+          await updateOfflineAttendanceOutboxItem(
+            item.member_key,
+            {
+              status:
+                "failed",
+
+              lastError:
+                failure.message,
+            }
+          );
+
+          await setCachedMemberCheckedIn(
+            item.event_session_id,
+            item.member_id,
+            false
+          );
+        }
+
+        dispatchAttendanceOutboxChanged(
+          sessionId
+        );
+      },
+      [sessionId]
+    );
 
   const syncOutbox =
     useCallback(
@@ -89,6 +151,79 @@ export function AttendanceOfflineSync({
             );
 
             try {
+              if (
+                item.type ===
+                "visitor_registration"
+              ) {
+                const result =
+                  await syncOfflineVisitorRegistrationAction({
+                    member_id:
+                      item.member_id,
+
+                    attendance_record_id:
+                      item.attendance_record_id,
+
+                    event_session_id:
+                      item.event_session_id,
+
+                    first_name:
+                      item.visitor
+                        .first_name,
+
+                    last_name:
+                      item.visitor
+                        .last_name,
+
+                    phone:
+                      item.visitor
+                        .phone,
+
+                    email:
+                      item.visitor
+                        .email,
+
+                    checked_in_at:
+                      item.checked_in_at,
+                  });
+
+                if (
+                  result.success
+                ) {
+                  await upsertCachedAttendanceMember({
+                    ...item.member,
+
+                    member_no:
+                      result.memberNo,
+                  });
+
+                  await setCachedMemberCheckedIn(
+                    item.event_session_id,
+                    item.member_id,
+                    true
+                  );
+
+                  await removeOfflineAttendanceOutboxItem(
+                    item.member_key
+                  );
+
+                  syncedAny =
+                    true;
+
+                  dispatchAttendanceOutboxChanged(
+                    sessionId
+                  );
+
+                  continue;
+                }
+
+                await markFailure(
+                  item,
+                  result
+                );
+
+                continue;
+              }
+
               const result =
                 await syncOfflineAttendanceCheckInAction({
                   attendance_record_id:
@@ -127,40 +262,9 @@ export function AttendanceOfflineSync({
                 continue;
               }
 
-              if (
-                result.retryable
-              ) {
-                await updateOfflineAttendanceOutboxItem(
-                  item.member_key,
-                  {
-                    status:
-                      "pending",
-
-                    lastError:
-                      result.message,
-                  }
-                );
-              } else {
-                await updateOfflineAttendanceOutboxItem(
-                  item.member_key,
-                  {
-                    status:
-                      "failed",
-
-                    lastError:
-                      result.message,
-                  }
-                );
-
-                await setCachedMemberCheckedIn(
-                  item.event_session_id,
-                  item.member_id,
-                  false
-                );
-              }
-
-              dispatchAttendanceOutboxChanged(
-                sessionId
+              await markFailure(
+                item,
+                result
               );
             } catch (
               error
@@ -180,6 +284,10 @@ export function AttendanceOfflineSync({
                     "Connection interrupted while synchronizing.",
                 }
               );
+
+              dispatchAttendanceOutboxChanged(
+                sessionId
+              );
             }
           }
 
@@ -197,6 +305,7 @@ export function AttendanceOfflineSync({
       },
       [
         sessionId,
+        markFailure,
         onAttendanceChanged,
         router,
       ]

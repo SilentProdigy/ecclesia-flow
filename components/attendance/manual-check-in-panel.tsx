@@ -72,6 +72,19 @@ type SearchSource =
   | "cache"
   | null;
 
+interface OfflineQueuedVisitor {
+  memberId: string;
+
+  attendanceRecordId:
+    string;
+
+  checkedInAt:
+    string;
+
+  displayName:
+    string;
+}
+
 export function ManualCheckInPanel({
   sessionId,
   onAttendanceChanged,
@@ -780,7 +793,6 @@ export function ManualCheckInPanel({
     );
 
     setQuery("");
-
     setMembers([]);
 
     setFeedback({
@@ -799,6 +811,38 @@ export function ManualCheckInPanel({
     onAttendanceChanged();
 
     router.refresh();
+
+    window.setTimeout(
+      () => {
+        inputRef.current?.focus();
+      },
+      100
+    );
+  }
+
+  function handleVisitorQueued(
+    visitor:
+      OfflineQueuedVisitor
+  ) {
+    setVisitorRegistrationOpen(
+      false
+    );
+
+    setQuery("");
+    setMembers([]);
+
+    setFeedback({
+      type:
+        "warning",
+
+      message:
+        `${visitor.displayName} was registered and checked in offline. The visitor will sync automatically when internet returns.`,
+    });
+
+    setRefreshVersion(
+      (current) =>
+        current + 1
+    );
 
     window.setTimeout(
       () => {
@@ -853,13 +897,13 @@ export function ManualCheckInPanel({
               <p className="text-xs font-semibold text-amber-900">
                 {cacheAvailable
                   ? "Offline attendance is available"
-                  : "No offline attendance cache is available"}
+                  : "Offline visitor registration is available"}
               </p>
 
               <p className="mt-1 text-xs leading-5 text-amber-700">
                 {cacheAvailable
-                  ? `${cacheMemberCount} active people are cached. Check-ins will be stored on this device and synchronized automatically when internet returns.`
-                  : "Reconnect once so Ecclesia Flow can cache the active member directory."}
+                  ? `${cacheMemberCount} active people are cached. Existing people and new visitors can be checked in offline.`
+                  : "New visitors can still be registered offline. Existing-member search requires the directory to have been cached first."}
               </p>
             </div>
           </div>
@@ -872,7 +916,9 @@ export function ManualCheckInPanel({
           />
 
           <input
-            ref={inputRef}
+            ref={
+              inputRef
+            }
             type="search"
             value={
               query
@@ -927,22 +973,13 @@ export function ManualCheckInPanel({
             <p className="mt-0.5 text-xs leading-5 text-slate-500">
               {isOnline
                 ? "Register and check them in without leaving attendance."
-                : "Offline visitor registration will be added in #52."}
+                : "Register now and sync the visitor automatically when internet returns."}
             </p>
           </div>
 
           <button
             type="button"
-            disabled={
-              !isOnline
-            }
             onClick={() => {
-              if (
-                !isOnline
-              ) {
-                return;
-              }
-
               setFeedback(
                 null
               );
@@ -951,7 +988,7 @@ export function ManualCheckInPanel({
                 true
               );
             }}
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
             <UserPlus
               size={15}
@@ -994,27 +1031,25 @@ export function ManualCheckInPanel({
                     {isOnline
                       ? "Check the spelling or register them as a new visitor."
                       : cacheAvailable
-                        ? "No match was found in the cached member directory."
-                        : "Reconnect to download the active member directory."}
+                        ? "No match was found in the cached directory. You can register them as a new visitor."
+                        : "The member directory is unavailable offline, but you can still register a new visitor."}
                   </p>
 
-                  {isOnline && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVisitorRegistrationOpen(
-                          true
-                        )
-                      }
-                      className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-semibold text-white"
-                    >
-                      <UserPlus
-                        size={15}
-                      />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisitorRegistrationOpen(
+                        true
+                      )
+                    }
+                    className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-semibold text-white"
+                  >
+                    <UserPlus
+                      size={15}
+                    />
 
-                      Register Visitor
-                    </button>
-                  )}
+                    Register Visitor
+                  </button>
                 </div>
               )}
 
@@ -1080,8 +1115,7 @@ export function ManualCheckInPanel({
           sessionId
         }
         open={
-          visitorRegistrationOpen &&
-          isOnline
+          visitorRegistrationOpen
         }
         onClose={() =>
           setVisitorRegistrationOpen(
@@ -1090,6 +1124,9 @@ export function ManualCheckInPanel({
         }
         onRegistered={
           handleVisitorRegistered
+        }
+        onQueued={
+          handleVisitorQueued
         }
       />
     </>
@@ -1135,6 +1172,15 @@ function MemberCheckInRow({
       0
     )}`.toUpperCase();
 
+  const memberNumberLabel =
+    member.pending_sync &&
+    member.member_no ===
+      0
+      ? "Pending visitor"
+      : formatMemberNumber(
+          member.member_no
+        );
+
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-slate-200 p-3">
       <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-sm font-bold text-slate-600">
@@ -1170,9 +1216,9 @@ function MemberCheckInRow({
 
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
           <span>
-            {formatMemberNumber(
-              member.member_no
-            )}
+            {
+              memberNumberLabel
+            }
           </span>
 
           <span>•</span>
@@ -1264,7 +1310,7 @@ function FeedbackMessage({
   ) {
     return (
       <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-        <CheckCircle2
+        <CloudUpload
           size={20}
           className="mt-0.5 shrink-0 text-amber-600"
         />

@@ -116,11 +116,8 @@ export type OfflineAttendanceOutboxStatus =
   | "syncing"
   | "failed";
 
-export interface OfflineAttendanceOutboxItem {
+interface OfflineAttendanceOutboxBase {
   member_key: string;
-
-  type:
-    "member_check_in";
 
   attendance_record_id:
     string;
@@ -128,8 +125,7 @@ export interface OfflineAttendanceOutboxItem {
   event_session_id:
     string;
 
-  member_id:
-    string;
+  member_id: string;
 
   checked_in_at:
     string;
@@ -152,6 +148,36 @@ export interface OfflineAttendanceOutboxItem {
     string;
 }
 
+export interface OfflineMemberCheckInOutboxItem
+  extends OfflineAttendanceOutboxBase {
+  type:
+    "member_check_in";
+}
+
+export interface OfflineVisitorRegistrationOutboxItem
+  extends OfflineAttendanceOutboxBase {
+  type:
+    "visitor_registration";
+
+  visitor: {
+    first_name:
+      string;
+
+    last_name:
+      string;
+
+    phone:
+      string | null;
+
+    email:
+      string | null;
+  };
+}
+
+export type OfflineAttendanceOutboxItem =
+  | OfflineMemberCheckInOutboxItem
+  | OfflineVisitorRegistrationOutboxItem;
+
 export interface OfflineAttendanceSyncInput {
   attendance_record_id:
     string;
@@ -165,6 +191,13 @@ export interface OfflineAttendanceSyncInput {
   checked_in_at:
     string;
 }
+
+export type OfflineSyncFailureCode =
+  | "invalid"
+  | "unauthorized"
+  | "session_closed"
+  | "member_inactive"
+  | "sync_failed";
 
 export type OfflineAttendanceSyncResult =
   | {
@@ -182,11 +215,66 @@ export type OfflineAttendanceSyncResult =
       success: false;
 
       code:
-        | "invalid"
-        | "unauthorized"
-        | "session_closed"
-        | "member_inactive"
-        | "sync_failed";
+        OfflineSyncFailureCode;
+
+      retryable:
+        boolean;
+
+      message: string;
+    };
+
+export interface OfflineVisitorSyncInput {
+  member_id:
+    string;
+
+  attendance_record_id:
+    string;
+
+  event_session_id:
+    string;
+
+  first_name:
+    string;
+
+  last_name:
+    string;
+
+  phone:
+    string | null;
+
+  email:
+    string | null;
+
+  checked_in_at:
+    string;
+}
+
+export type OfflineVisitorSyncResult =
+  | {
+      success: true;
+
+      status:
+        | "synced"
+        | "already_synced"
+        | "already_checked_in";
+
+      memberId:
+        string;
+
+      memberNo:
+        number;
+
+      attendanceRecordId:
+        string;
+
+      checkedInAt:
+        string;
+    }
+  | {
+      success: false;
+
+      code:
+        OfflineSyncFailureCode;
 
       retryable:
         boolean;

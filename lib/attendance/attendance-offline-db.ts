@@ -8,6 +8,8 @@ import type {
   CachedMemberSearchResult,
   OfflineAttendanceOutboxItem,
   OfflineAttendanceOutboxStatus,
+  OfflineMemberCheckInOutboxItem,
+  OfflineVisitorRegistrationOutboxItem,
 } from "./offline-cache-types";
 
 import type {
@@ -554,6 +556,38 @@ export async function setCachedMemberCheckedIn(
   db.close();
 }
 
+export async function upsertCachedAttendanceMember(
+  member:
+    CachedAttendanceMember
+) {
+  const db =
+    await openAttendanceDb();
+
+  if (!db) {
+    return;
+  }
+
+  const transaction =
+    db.transaction(
+      MEMBER_STORE,
+      "readwrite"
+    );
+
+  transaction
+    .objectStore(
+      MEMBER_STORE
+    )
+    .put(
+      member
+    );
+
+  await transactionToPromise(
+    transaction
+  );
+
+  db.close();
+}
+
 export async function hasCachedMember(
   memberId: string
 ) {
@@ -825,7 +859,7 @@ export async function queueOfflineAttendanceCheckIn({
 
   member:
     CachedAttendanceMember;
-}): Promise<OfflineAttendanceOutboxItem> {
+}): Promise<OfflineMemberCheckInOutboxItem> {
   const db =
     await openAttendanceDb();
 
@@ -843,7 +877,7 @@ export async function queueOfflineAttendanceCheckIn({
 
   const result =
     await new Promise<
-      OfflineAttendanceOutboxItem
+      OfflineMemberCheckInOutboxItem
     >(
       (
         resolve,
@@ -866,7 +900,7 @@ export async function queueOfflineAttendanceCheckIn({
           );
 
         let value:
-          OfflineAttendanceOutboxItem | null =
+          OfflineMemberCheckInOutboxItem | null =
           null;
 
         request.onsuccess =
@@ -878,6 +912,8 @@ export async function queueOfflineAttendanceCheckIn({
 
             if (
               existing &&
+              existing.type ===
+                "member_check_in" &&
               existing.status !==
                 "failed"
             ) {
@@ -988,6 +1024,184 @@ export async function queueOfflineAttendanceCheckIn({
   );
 
   return result;
+}
+
+export async function queueOfflineVisitorRegistration({
+  sessionId,
+  firstName,
+  lastName,
+  phone,
+  email,
+}: {
+  sessionId: string;
+
+  firstName: string;
+
+  lastName: string;
+
+  phone:
+    string | null;
+
+  email:
+    string | null;
+}): Promise<OfflineVisitorRegistrationOutboxItem> {
+  const db =
+    await openAttendanceDb();
+
+  if (!db) {
+    throw new Error(
+      "IndexedDB is not available."
+    );
+  }
+
+  const memberId =
+    crypto.randomUUID();
+
+  const attendanceRecordId =
+    crypto.randomUUID();
+
+  const now =
+    new Date()
+      .toISOString();
+
+  const memberKey =
+    getOutboxMemberKey(
+      sessionId,
+      memberId
+    );
+
+  const member:
+    CachedAttendanceMember =
+    {
+      id:
+        memberId,
+
+      member_no:
+        0,
+
+      first_name:
+        firstName,
+
+      middle_name:
+        null,
+
+      last_name:
+        lastName,
+
+      suffix:
+        null,
+
+      preferred_name:
+        null,
+
+      phone,
+
+      email,
+
+      member_type:
+        "visitor",
+
+      photo_path:
+        null,
+    };
+
+  const item:
+    OfflineVisitorRegistrationOutboxItem =
+    {
+      member_key:
+        memberKey,
+
+      type:
+        "visitor_registration",
+
+      attendance_record_id:
+        attendanceRecordId,
+
+      event_session_id:
+        sessionId,
+
+      member_id:
+        memberId,
+
+      checked_in_at:
+        now,
+
+      member,
+
+      visitor: {
+        first_name:
+          firstName,
+
+        last_name:
+          lastName,
+
+        phone,
+
+        email,
+      },
+
+      status:
+        "pending",
+
+      attempts:
+        0,
+
+      last_error:
+        null,
+
+      created_at:
+        now,
+
+      updated_at:
+        now,
+    };
+
+  const transaction =
+    db.transaction(
+      [
+        OUTBOX_STORE,
+        CHECKIN_STORE,
+      ],
+      "readwrite"
+    );
+
+  transaction
+    .objectStore(
+      OUTBOX_STORE
+    )
+    .put(
+      item
+    );
+
+  transaction
+    .objectStore(
+      CHECKIN_STORE
+    )
+    .put({
+      key:
+        getCheckInKey(
+          sessionId,
+          memberId
+        ),
+
+      session_id:
+        sessionId,
+
+      member_id:
+        memberId,
+    } satisfies CachedCheckIn);
+
+  await transactionToPromise(
+    transaction
+  );
+
+  db.close();
+
+  dispatchAttendanceOutboxChanged(
+    sessionId
+  );
+
+  return item;
 }
 
 export async function getOfflineAttendanceOutboxItems(
@@ -1317,21 +1531,53 @@ export async function searchCachedAttendanceMembers(
       )
     );
 
+  const queuedItems =
+    outbox.filter(
+      (item) =>
+        item.status ===
+          "pending" ||
+        item.status ===
+          "syncing"
+    );
+
   const queuedIds =
     new Set(
-      outbox
-        .filter(
-          (item) =>
-            item.status ===
-              "pending" ||
-            item.status ===
-              "syncing"
-        )
-        .map(
-          (item) =>
-            item.member_id
-        )
+      queuedItems.map(
+        (item) =>
+          item.member_id
+      )
     );
+
+  const combinedMembers =
+    new Map<
+      string,
+      CachedAttendanceMember
+    >();
+
+  for (
+    const member of
+    members
+  ) {
+    combinedMembers.set(
+      member.id,
+      member
+    );
+  }
+
+  for (
+    const item of
+    queuedItems
+  ) {
+    if (
+      item.type ===
+      "visitor_registration"
+    ) {
+      combinedMembers.set(
+        item.member.id,
+        item.member
+      );
+    }
+  }
 
   const normalizedQuery =
     normalizeSearchQuery(
@@ -1340,7 +1586,9 @@ export async function searchCachedAttendanceMembers(
 
   const matchedMembers =
     findCachedMembers(
-      members,
+      Array.from(
+        combinedMembers.values()
+      ),
       normalizedQuery
     )
       .slice(
@@ -1434,9 +1682,12 @@ function findCachedMembers(
     .filter(
       (member) => {
         const memberNumber =
-          formatCachedMemberNumber(
-            member.member_no
-          ).toLowerCase();
+          member.member_no >
+          0
+            ? formatCachedMemberNumber(
+                member.member_no
+              ).toLowerCase()
+            : "";
 
         const haystack =
           [
@@ -1448,9 +1699,12 @@ function findCachedMembers(
             member.phone,
             member.email,
             memberNumber,
-            String(
-              member.member_no
-            ),
+            member.member_no >
+            0
+              ? String(
+                  member.member_no
+                )
+              : null,
           ]
             .filter(Boolean)
             .join(" ")
