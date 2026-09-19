@@ -13,10 +13,12 @@ import {
 import {
   Check,
   CheckCircle2,
+  CloudOff,
   LoaderCircle,
   Search,
   UserPlus,
   UserRoundSearch,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 
@@ -29,6 +31,12 @@ import type {
   ManualCheckInMember,
   QuickVisitorRegistrationResult,
 } from "@/lib/attendance";
+
+import {
+  getAttendanceCacheInfo,
+  searchCachedAttendanceMembers,
+  setCachedMemberCheckedIn,
+} from "@/lib/attendance/attendance-offline-db";
 
 import {
   manualCheckInMemberAction,
@@ -54,6 +62,11 @@ interface FeedbackState {
 
   message: string;
 }
+
+type SearchSource =
+  | "online"
+  | "cache"
+  | null;
 
 export function ManualCheckInPanel({
   sessionId,
@@ -118,18 +131,109 @@ export function ManualCheckInPanel({
   ] =
     useState(false);
 
+  const [
+    isOnline,
+    setIsOnline,
+  ] =
+    useState(true);
+
+  const [
+    cacheAvailable,
+    setCacheAvailable,
+  ] =
+    useState(false);
+
+  const [
+    cacheMemberCount,
+    setCacheMemberCount,
+  ] =
+    useState(0);
+
+  const [
+    searchSource,
+    setSearchSource,
+  ] =
+    useState<
+      SearchSource
+    >(null);
+
   const trimmedQuery =
     query.trim();
 
   const shouldSearch =
-    trimmedQuery.length > 0;
+    trimmedQuery.length >
+    0;
+
+  useEffect(() => {
+    function updateConnectionState() {
+      setIsOnline(
+        navigator.onLine
+      );
+
+      void getAttendanceCacheInfo(
+        sessionId
+      ).then(
+        (info) => {
+          setCacheAvailable(
+            info.available
+          );
+
+          setCacheMemberCount(
+            info.memberCount
+          );
+        }
+      );
+    }
+
+    updateConnectionState();
+
+    window.addEventListener(
+      "online",
+      updateConnectionState
+    );
+
+    window.addEventListener(
+      "offline",
+      updateConnectionState
+    );
+
+    const interval =
+      window.setInterval(
+        updateConnectionState,
+        30_000
+      );
+
+    return () => {
+      window.removeEventListener(
+        "online",
+        updateConnectionState
+      );
+
+      window.removeEventListener(
+        "offline",
+        updateConnectionState
+      );
+
+      window.clearInterval(
+        interval
+      );
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     if (!shouldSearch) {
-      requestIdRef.current += 1;
+      requestIdRef.current +=
+        1;
 
       setMembers([]);
-      setIsSearching(false);
+
+      setIsSearching(
+        false
+      );
+
+      setSearchSource(
+        null
+      );
 
       return;
     }
@@ -147,45 +251,177 @@ export function ManualCheckInPanel({
             true
           );
 
-          const result =
-            await searchAttendanceMembersAction({
-              eventSessionId:
+          try {
+            if (
+              !navigator.onLine
+            ) {
+              const cached =
+                await searchCachedAttendanceMembers(
+                  sessionId,
+                  trimmedQuery
+                );
+
+              if (
+                cancelled ||
+                requestId !==
+                  requestIdRef
+                    .current
+              ) {
+                return;
+              }
+
+              setMembers(
+                cached.members
+              );
+
+              setCacheAvailable(
+                cached.available
+              );
+
+              setSearchSource(
+                "cache"
+              );
+
+              setIsSearching(
+                false
+              );
+
+              return;
+            }
+
+            const result =
+              await searchAttendanceMembersAction({
+                eventSessionId:
+                  sessionId,
+
+                query:
+                  trimmedQuery,
+              });
+
+            if (
+              cancelled ||
+              requestId !==
+                requestIdRef
+                  .current
+            ) {
+              return;
+            }
+
+            if (
+              result.success
+            ) {
+              setMembers(
+                result.members
+              );
+
+              setSearchSource(
+                "online"
+              );
+
+              setIsSearching(
+                false
+              );
+
+              return;
+            }
+
+            const cached =
+              await searchCachedAttendanceMembers(
                 sessionId,
+                trimmedQuery
+              );
 
-              query:
-                trimmedQuery,
-            });
+            if (
+              cancelled ||
+              requestId !==
+                requestIdRef
+                  .current
+            ) {
+              return;
+            }
 
-          if (
-            cancelled ||
-            requestId !==
-              requestIdRef.current
-          ) {
-            return;
-          }
+            if (
+              cached.available
+            ) {
+              setMembers(
+                cached.members
+              );
 
-          if (
-            result.success
-          ) {
-            setMembers(
-              result.members
+              setSearchSource(
+                "cache"
+              );
+            } else {
+              setMembers([]);
+
+              setFeedback({
+                type:
+                  "error",
+
+                message:
+                  result.message,
+              });
+            }
+          } catch (error) {
+            console.error(
+              "Attendance search failed:",
+              error
             );
-          } else {
-            setMembers([]);
 
-            setFeedback({
-              type: "error",
+            try {
+              const cached =
+                await searchCachedAttendanceMembers(
+                  sessionId,
+                  trimmedQuery
+                );
 
-              message:
-                result.message,
-            });
+              if (
+                cancelled ||
+                requestId !==
+                  requestIdRef
+                    .current
+              ) {
+                return;
+              }
+
+              setMembers(
+                cached.members
+              );
+
+              setCacheAvailable(
+                cached.available
+              );
+
+              setSearchSource(
+                cached.available
+                  ? "cache"
+                  : null
+              );
+            } catch (
+              cacheError
+            ) {
+              console.error(
+                "Cached attendance search failed:",
+                cacheError
+              );
+
+              setMembers([]);
+            }
+          } finally {
+            if (
+              !cancelled &&
+              requestId ===
+                requestIdRef
+                  .current
+            ) {
+              setIsSearching(
+                false
+              );
+            }
           }
-
-          setIsSearching(
-            false
-          );
         },
-        300
+        isOnline
+          ? 300
+          : 50
       );
 
     return () => {
@@ -200,6 +436,7 @@ export function ManualCheckInPanel({
     shouldSearch,
     sessionId,
     refreshVersion,
+    isOnline,
   ]);
 
   async function handleCheckIn(
@@ -207,6 +444,7 @@ export function ManualCheckInPanel({
       ManualCheckInMember
   ) {
     if (
+      !isOnline ||
       member.already_checked_in ||
       pendingMemberId
     ) {
@@ -217,7 +455,9 @@ export function ManualCheckInPanel({
       member.id
     );
 
-    setFeedback(null);
+    setFeedback(
+      null
+    );
 
     const result =
       await manualCheckInMemberAction({
@@ -236,7 +476,8 @@ export function ManualCheckInPanel({
       !result.success
     ) {
       setFeedback({
-        type: "error",
+        type:
+          "error",
 
         message:
           result.message,
@@ -246,6 +487,12 @@ export function ManualCheckInPanel({
 
       return;
     }
+
+    await setCachedMemberCheckedIn(
+      sessionId,
+      result.memberId,
+      true
+    );
 
     setMembers(
       (current) =>
@@ -268,20 +515,23 @@ export function ManualCheckInPanel({
       "already_checked_in"
     ) {
       setFeedback({
-        type: "warning",
+        type:
+          "warning",
 
         message:
           `${result.displayName} is already checked in.`,
       });
     } else {
       setFeedback({
-        type: "success",
+        type:
+          "success",
 
         message:
           `${result.displayName} checked in successfully.`,
       });
 
       setQuery("");
+
       setMembers([]);
 
       setRefreshVersion(
@@ -306,7 +556,8 @@ export function ManualCheckInPanel({
     result: Extract<
       QuickVisitorRegistrationResult,
       {
-        success: true;
+        success:
+          true;
       }
     >
   ) {
@@ -315,10 +566,12 @@ export function ManualCheckInPanel({
     );
 
     setQuery("");
+
     setMembers([]);
 
     setFeedback({
-      type: "success",
+      type:
+        "success",
 
       message:
         `${result.displayName} was registered as a visitor and checked in successfully.`,
@@ -344,15 +597,27 @@ export function ManualCheckInPanel({
   return (
     <>
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">
-            Manual Check-In
-          </h2>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">
+              Manual Check-In
+            </h2>
 
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            Search for a member,
-            attendee, or visitor.
-          </p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Search for a member,
+              attendee, or visitor.
+            </p>
+          </div>
+
+          {!isOnline && (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
+              <WifiOff
+                size={12}
+              />
+
+              Offline
+            </span>
+          )}
         </div>
 
         {feedback && (
@@ -361,6 +626,29 @@ export function ManualCheckInPanel({
               feedback
             }
           />
+        )}
+
+        {!isOnline && (
+          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <CloudOff
+              size={18}
+              className="mt-0.5 shrink-0 text-amber-700"
+            />
+
+            <div>
+              <p className="text-xs font-semibold text-amber-900">
+                {cacheAvailable
+                  ? "Offline member search is available"
+                  : "No offline member cache is available"}
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-amber-700">
+                {cacheAvailable
+                  ? `${cacheMemberCount} active people are cached on this device. Offline check-in syncing will be enabled in #51.`
+                  : "Reconnect to the internet once so Ecclesia Flow can cache the active member directory."}
+              </p>
+            </div>
+          </div>
         )}
 
         <div className="relative mt-5">
@@ -372,12 +660,15 @@ export function ManualCheckInPanel({
           <input
             ref={inputRef}
             type="search"
-            value={query}
+            value={
+              query
+            }
             onChange={(
               event
             ) => {
               setQuery(
-                event.target.value
+                event.target
+                  .value
               );
 
               setFeedback(
@@ -385,7 +676,9 @@ export function ManualCheckInPanel({
               );
             }}
             autoComplete="off"
-            spellCheck={false}
+            spellCheck={
+              false
+            }
             placeholder="Search name, phone, email or EC number..."
             className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-11 text-sm text-black placeholder:text-slate-400 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
           />
@@ -398,6 +691,19 @@ export function ManualCheckInPanel({
           )}
         </div>
 
+        {searchSource ===
+          "cache" &&
+          shouldSearch && (
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
+              <CloudOff
+                size={12}
+              />
+
+              Results from offline
+              member cache
+            </div>
+          )}
+
         <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-800">
@@ -405,15 +711,24 @@ export function ManualCheckInPanel({
             </p>
 
             <p className="mt-0.5 text-xs leading-5 text-slate-500">
-              Register and check
-              them in without
-              leaving attendance.
+              {isOnline
+                ? "Register and check them in without leaving attendance."
+                : "Offline visitor registration will be added in #52."}
             </p>
           </div>
 
           <button
             type="button"
+            disabled={
+              !isOnline
+            }
             onClick={() => {
+              if (
+                !isOnline
+              ) {
+                return;
+              }
+
               setFeedback(
                 null
               );
@@ -422,7 +737,7 @@ export function ManualCheckInPanel({
                 true
               );
             }}
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <UserPlus
               size={15}
@@ -462,27 +777,30 @@ export function ManualCheckInPanel({
                   </p>
 
                   <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-slate-500">
-                    Check the
-                    spelling or
-                    register them as
-                    a new visitor.
+                    {isOnline
+                      ? "Check the spelling or register them as a new visitor."
+                      : cacheAvailable
+                        ? "No match was found in the cached member directory."
+                        : "Reconnect to download the active member directory."}
                   </p>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVisitorRegistrationOpen(
-                        true
-                      )
-                    }
-                    className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-semibold text-white"
-                  >
-                    <UserPlus
-                      size={15}
-                    />
+                  {isOnline && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisitorRegistrationOpen(
+                          true
+                        )
+                      }
+                      className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-semibold text-white"
+                    >
+                      <UserPlus
+                        size={15}
+                      />
 
-                    Register Visitor
-                  </button>
+                      Register Visitor
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -504,7 +822,9 @@ export function ManualCheckInPanel({
 
                 <div className="max-h-[340px] space-y-2 overflow-y-auto overscroll-contain pr-1">
                   {members.map(
-                    (member) => (
+                    (
+                      member
+                    ) => (
                       <MemberCheckInRow
                         key={
                           member.id
@@ -519,7 +839,11 @@ export function ManualCheckInPanel({
                         disabled={
                           Boolean(
                             pendingMemberId
-                          )
+                          ) ||
+                          !isOnline
+                        }
+                        offline={
+                          !isOnline
                         }
                         onCheckIn={() =>
                           handleCheckIn(
@@ -541,7 +865,8 @@ export function ManualCheckInPanel({
           sessionId
         }
         open={
-          visitorRegistrationOpen
+          visitorRegistrationOpen &&
+          isOnline
         }
         onClose={() =>
           setVisitorRegistrationOpen(
@@ -560,16 +885,23 @@ function MemberCheckInRow({
   member,
   isPending,
   disabled,
+  offline,
   onCheckIn,
 }: {
   member:
     ManualCheckInMember;
 
-  isPending: boolean;
+  isPending:
+    boolean;
 
-  disabled: boolean;
+  disabled:
+    boolean;
 
-  onCheckIn: () => void;
+  offline:
+    boolean;
+
+  onCheckIn:
+    () => void;
 }) {
   const displayName =
     [
@@ -606,7 +938,9 @@ function MemberCheckInRow({
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-slate-950">
-          {displayName}
+          {
+            displayName
+          }
         </p>
 
         {member.preferred_name && (
@@ -641,6 +975,14 @@ function MemberCheckInRow({
           <Check
             size={17}
           />
+        </div>
+      ) : offline ? (
+        <div className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-[10px] font-semibold text-slate-500">
+          <WifiOff
+            size={13}
+          />
+
+          Offline
         </div>
       ) : (
         <button

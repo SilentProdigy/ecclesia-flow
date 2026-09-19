@@ -5,6 +5,10 @@ import {
 } from "react";
 
 import {
+  AttendanceOfflineBootstrap,
+} from "./attendance-offline-bootstrap";
+
+import {
   AttendanceRoster,
 } from "./attendance-roster";
 
@@ -43,6 +47,12 @@ export function AttendanceWorkspace({
 
   return (
     <>
+      <AttendanceOfflineBootstrap
+        sessionId={
+          sessionId
+        }
+      />
+
       <ManualCheckInPanel
         sessionId={
           sessionId
