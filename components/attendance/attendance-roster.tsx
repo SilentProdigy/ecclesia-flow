@@ -29,6 +29,10 @@ import type {
 } from "@/lib/attendance";
 
 import {
+  useAttendanceRealtime,
+} from "@/lib/attendance/use-attendance-realtime";
+
+import {
   getAttendanceRosterAction,
   voidAttendanceRecordAction,
 } from "@/app/(app)/attendance/actions";
@@ -46,6 +50,11 @@ interface AttendanceRosterProps {
 
   onAttendanceChanged?:
     () => void;
+
+  onCountChange?:
+    (
+      count: number
+    ) => void;
 }
 
 const PREVIEW_COUNT = 4;
@@ -56,6 +65,7 @@ export function AttendanceRoster({
   refreshVersion = 0,
   mode = "live",
   onAttendanceChanged,
+  onCountChange,
 }: AttendanceRosterProps) {
   const [
     roster,
@@ -121,7 +131,13 @@ export function AttendanceRoster({
             result.roster
           );
 
-          setError(null);
+          onCountChange?.(
+            result.count
+          );
+
+          setError(
+            null
+          );
         } else {
           setError(
             result.message
@@ -132,11 +148,35 @@ export function AttendanceRoster({
           false
         );
       },
-      [sessionId]
+      [
+        sessionId,
+        onCountChange,
+      ]
     );
 
+  const handleRealtimeChange =
+    useCallback(() => {
+      void loadRoster(
+        false
+      );
+    }, [loadRoster]);
+
+  useAttendanceRealtime({
+    sessionId,
+
+    channelKey:
+      "roster",
+
+    onAttendanceChanged:
+      isLive
+        ? handleRealtimeChange
+        : undefined,
+  });
+
   useEffect(() => {
-    void loadRoster(true);
+    void loadRoster(
+      true
+    );
   }, [
     loadRoster,
     refreshVersion,
@@ -159,7 +199,7 @@ export function AttendanceRoster({
             );
           }
         },
-        5000
+        60_000
       );
 
     return () => {
@@ -203,6 +243,7 @@ export function AttendanceRoster({
               {isLive ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+
                   Live
                 </span>
               ) : (
@@ -210,6 +251,7 @@ export function AttendanceRoster({
                   <LockKeyhole
                     size={11}
                   />
+
                   Final
                 </span>
               )}
@@ -334,9 +376,8 @@ export function AttendanceRoster({
 
         {isLive && (
           <p className="mt-4 text-center text-[11px] text-slate-400">
-            Attendance updates
-            automatically every 5
-            seconds.
+            Attendance updates in
+            real time.
           </p>
         )}
       </section>
@@ -641,7 +682,9 @@ function FullRosterSheet({
               aria-label="Close"
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600"
             >
-              <X size={18} />
+              <X
+                size={18}
+              />
             </button>
           </div>
 
@@ -950,7 +993,9 @@ function AttendanceCorrectionModal({
             }
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 disabled:opacity-50"
           >
-            <X size={18} />
+            <X
+              size={18}
+            />
           </button>
         </div>
 

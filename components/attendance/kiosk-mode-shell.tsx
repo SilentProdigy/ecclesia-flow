@@ -27,6 +27,10 @@ import {
   AttendanceWorkspace,
 } from "./attendance-workspace";
 
+import {
+  AttendanceSessionRealtimeRefresh,
+} from "./attendance-session-realtime-refresh";
+
 interface KioskModeShellProps {
   sessionId: string;
 
@@ -88,6 +92,22 @@ export function KioskModeShell({
     setWakeLockSupported,
   ] =
     useState(false);
+
+  const [
+    liveAttendanceCount,
+    setLiveAttendanceCount,
+  ] =
+    useState(
+      attendanceCount
+    );
+
+  useEffect(() => {
+    setLiveAttendanceCount(
+      attendanceCount
+    );
+  }, [
+    attendanceCount,
+  ]);
 
   const requestWakeLock =
     useCallback(
@@ -311,6 +331,12 @@ export function KioskModeShell({
 
   return (
     <div className="min-h-dvh overscroll-none bg-slate-50 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+      <AttendanceSessionRealtimeRefresh
+        sessionId={
+          sessionId
+        }
+      />
+
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur">
         <div className="mx-auto flex w-full max-w-2xl items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
@@ -420,7 +446,7 @@ export function KioskModeShell({
 
               <span className="text-lg font-bold">
                 {
-                  attendanceCount
+                  liveAttendanceCount
                 }
               </span>
             </div>
@@ -496,6 +522,9 @@ export function KioskModeShell({
             }
             timezone={
               timezone
+            }
+            onAttendanceCountChange={
+              setLiveAttendanceCount
             }
           />
         </div>

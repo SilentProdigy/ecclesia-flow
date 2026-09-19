@@ -19,6 +19,10 @@ import type {
 } from "@/lib/attendance";
 
 import {
+  useAttendanceRealtime,
+} from "@/lib/attendance/use-attendance-realtime";
+
+import {
   getAttendanceSummaryAction,
 } from "@/app/(app)/attendance/summary-actions";
 
@@ -78,7 +82,9 @@ export function AttendanceSummary({
             result.summary
           );
 
-          setError(null);
+          setError(
+            null
+          );
 
           return;
         }
@@ -89,6 +95,18 @@ export function AttendanceSummary({
       },
       [sessionId]
     );
+
+  useAttendanceRealtime({
+    sessionId,
+
+    channelKey:
+      "summary",
+
+    onAttendanceChanged:
+      isLive
+        ? refreshSummary
+        : undefined,
+  });
 
   useEffect(() => {
     if (!isLive) {
@@ -105,7 +123,7 @@ export function AttendanceSummary({
             void refreshSummary();
           }
         },
-        5000
+        60_000
       );
 
     return () => {

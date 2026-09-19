@@ -16,11 +16,17 @@ interface AttendanceWorkspaceProps {
   sessionId: string;
 
   timezone: string;
+
+  onAttendanceCountChange?:
+    (
+      count: number
+    ) => void;
 }
 
 export function AttendanceWorkspace({
   sessionId,
   timezone,
+  onAttendanceCountChange,
 }: AttendanceWorkspaceProps) {
   const [
     refreshVersion,
@@ -58,6 +64,9 @@ export function AttendanceWorkspace({
         }
         onAttendanceChanged={
           handleAttendanceChanged
+        }
+        onCountChange={
+          onAttendanceCountChange
         }
       />
     </>

@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 
 import {
+  AttendanceSessionRealtimeRefresh,
+} from "@/components/attendance/attendance-session-realtime-refresh";
+
+import {
   notFound,
 } from "next/navigation";
 
@@ -145,6 +149,11 @@ export default async function AttendanceSessionPage({
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6">
+      <AttendanceSessionRealtimeRefresh
+        sessionId={
+          session.id
+        }
+      />
       <Link
         href="/attendance"
         className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-950"
