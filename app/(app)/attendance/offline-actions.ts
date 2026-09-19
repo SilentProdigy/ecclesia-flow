@@ -2,8 +2,11 @@
 
 import {
   eventSessionIdSchema,
+  offlineAttendanceSyncSchema,
   type AttendanceOfflineBootstrapResult,
   type CachedAttendanceMember,
+  type OfflineAttendanceSyncInput,
+  type OfflineAttendanceSyncResult,
 } from "@/lib/attendance";
 
 import {
@@ -11,6 +14,58 @@ import {
 } from "@/lib/supabase/server";
 
 const PAGE_SIZE = 500;
+
+async function getAuthenticatedStaff() {
+  const supabase =
+    await createClient();
+
+  const {
+    data: claimsData,
+  } =
+    await supabase.auth.getClaims();
+
+  const userId =
+    claimsData?.claims?.sub;
+
+  if (!userId) {
+    return null;
+  }
+
+  const {
+    data: profile,
+    error,
+  } = await supabase
+    .from("profiles")
+    .select(`
+      id,
+      role,
+      is_active
+    `)
+    .eq(
+      "id",
+      userId
+    )
+    .maybeSingle();
+
+  if (
+    error ||
+    !profile ||
+    !profile.is_active ||
+    ![
+      "admin",
+      "staff",
+    ].includes(
+      profile.role
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    supabase,
+    userId,
+  };
+}
 
 export async function getAttendanceOfflineBootstrapAction(
   eventSessionId: string
@@ -29,18 +84,10 @@ export async function getAttendanceOfflineBootstrapAction(
     };
   }
 
-  const supabase =
-    await createClient();
+  const auth =
+    await getAuthenticatedStaff();
 
-  const {
-    data: claimsData,
-  } =
-    await supabase.auth.getClaims();
-
-  const userId =
-    claimsData?.claims?.sub;
-
-  if (!userId) {
+  if (!auth) {
     return {
       success: false,
 
@@ -50,39 +97,8 @@ export async function getAttendanceOfflineBootstrapAction(
   }
 
   const {
-    data: profile,
-    error: profileError,
-  } = await supabase
-    .from("profiles")
-    .select(`
-      id,
-      role,
-      is_active
-    `)
-    .eq(
-      "id",
-      userId
-    )
-    .maybeSingle();
-
-  if (
-    profileError ||
-    !profile ||
-    !profile.is_active ||
-    ![
-      "admin",
-      "staff",
-    ].includes(
-      profile.role
-    )
-  ) {
-    return {
-      success: false,
-
-      message:
-        "You do not have permission to cache attendance data.",
-    };
-  }
+    supabase,
+  } = auth;
 
   const {
     data: session,
@@ -226,6 +242,437 @@ export async function getAttendanceOfflineBootstrapAction(
         "Unable to prepare attendance for offline use.",
     };
   }
+}
+
+export async function syncOfflineAttendanceCheckInAction(
+  input:
+    OfflineAttendanceSyncInput
+): Promise<OfflineAttendanceSyncResult> {
+  const parsed =
+    offlineAttendanceSyncSchema.safeParse(
+      input
+    );
+
+  if (!parsed.success) {
+    return {
+      success: false,
+
+      code:
+        "invalid",
+
+      retryable:
+        false,
+
+      message:
+        parsed.error.issues[0]
+          ?.message ??
+        "Invalid offline attendance record.",
+    };
+  }
+
+  const auth =
+    await getAuthenticatedStaff();
+
+  if (!auth) {
+    return {
+      success: false,
+
+      code:
+        "unauthorized",
+
+      retryable:
+        false,
+
+      message:
+        "Your staff session is no longer available.",
+    };
+  }
+
+  const {
+    supabase,
+    userId,
+  } = auth;
+
+  const {
+    data:
+      existingById,
+
+    error:
+      existingByIdError,
+  } = await supabase
+    .from(
+      "attendance_records"
+    )
+    .select(`
+      id,
+      event_session_id,
+      member_id
+    `)
+    .eq(
+      "id",
+      parsed.data
+        .attendance_record_id
+    )
+    .maybeSingle();
+
+  if (
+    existingByIdError
+  ) {
+    console.error(
+      "Unable to verify offline attendance id:",
+      existingByIdError
+    );
+
+    return {
+      success: false,
+
+      code:
+        "sync_failed",
+
+      retryable:
+        true,
+
+      message:
+        "Unable to verify offline attendance.",
+    };
+  }
+
+  if (
+    existingById
+  ) {
+    if (
+      existingById
+        .event_session_id !==
+        parsed.data
+          .event_session_id ||
+      existingById
+        .member_id !==
+        parsed.data.member_id
+    ) {
+      return {
+        success: false,
+
+        code:
+          "invalid",
+
+        retryable:
+          false,
+
+        message:
+          "The offline attendance identifier conflicts with another record.",
+      };
+    }
+
+    return {
+      success: true,
+
+      status:
+        "already_synced",
+
+      attendanceRecordId:
+        existingById.id,
+    };
+  }
+
+  const {
+    data: session,
+    error: sessionError,
+  } = await supabase
+    .from(
+      "event_sessions"
+    )
+    .select(
+      "id, status"
+    )
+    .eq(
+      "id",
+      parsed.data
+        .event_session_id
+    )
+    .maybeSingle();
+
+  if (
+    sessionError
+  ) {
+    console.error(
+      "Unable to verify offline attendance session:",
+      sessionError
+    );
+
+    return {
+      success: false,
+
+      code:
+        "sync_failed",
+
+      retryable:
+        true,
+
+      message:
+        "Unable to verify the attendance session.",
+    };
+  }
+
+  if (
+    !session ||
+    session.status !==
+      "open"
+  ) {
+    return {
+      success: false,
+
+      code:
+        "session_closed",
+
+      retryable:
+        false,
+
+      message:
+        "This attendance session is no longer open.",
+    };
+  }
+
+  const {
+    data: member,
+    error: memberError,
+  } = await supabase
+    .from("members")
+    .select(`
+      id,
+      status,
+      member_type
+    `)
+    .eq(
+      "id",
+      parsed.data
+        .member_id
+    )
+    .maybeSingle();
+
+  if (
+    memberError
+  ) {
+    console.error(
+      "Unable to verify offline attendance member:",
+      memberError
+    );
+
+    return {
+      success: false,
+
+      code:
+        "sync_failed",
+
+      retryable:
+        true,
+
+      message:
+        "Unable to verify the member.",
+    };
+  }
+
+  if (
+    !member ||
+    member.status !==
+      "active"
+  ) {
+    return {
+      success: false,
+
+      code:
+        "member_inactive",
+
+      retryable:
+        false,
+
+      message:
+        "This member is no longer active.",
+    };
+  }
+
+  const {
+    data:
+      existingAttendance,
+
+    error:
+      existingAttendanceError,
+  } = await supabase
+    .from(
+      "attendance_records"
+    )
+    .select(
+      "id"
+    )
+    .eq(
+      "event_session_id",
+      parsed.data
+        .event_session_id
+    )
+    .eq(
+      "member_id",
+      parsed.data
+        .member_id
+    )
+    .is(
+      "voided_at",
+      null
+    )
+    .maybeSingle();
+
+  if (
+    existingAttendanceError
+  ) {
+    console.error(
+      "Unable to check duplicate offline attendance:",
+      existingAttendanceError
+    );
+
+    return {
+      success: false,
+
+      code:
+        "sync_failed",
+
+      retryable:
+        true,
+
+      message:
+        "Unable to verify existing attendance.",
+    };
+  }
+
+  if (
+    existingAttendance
+  ) {
+    return {
+      success: true,
+
+      status:
+        "already_checked_in",
+
+      attendanceRecordId:
+        existingAttendance.id,
+    };
+  }
+
+  const {
+    data:
+      attendanceRecord,
+
+    error:
+      attendanceError,
+  } = await supabase
+    .from(
+      "attendance_records"
+    )
+    .insert({
+      id:
+        parsed.data
+          .attendance_record_id,
+
+      event_session_id:
+        parsed.data
+          .event_session_id,
+
+      member_id:
+        parsed.data
+          .member_id,
+
+      check_in_method:
+        "manual",
+
+      checked_in_at:
+        parsed.data
+          .checked_in_at,
+
+      checked_in_by:
+        userId,
+
+      member_type_at_check_in:
+        member.member_type,
+    })
+    .select(
+      "id"
+    )
+    .single();
+
+  if (
+    attendanceError
+  ) {
+    if (
+      attendanceError.code ===
+      "23505"
+    ) {
+      const {
+        data:
+          duplicateAttendance,
+      } = await supabase
+        .from(
+          "attendance_records"
+        )
+        .select(
+          "id"
+        )
+        .eq(
+          "event_session_id",
+          parsed.data
+            .event_session_id
+        )
+        .eq(
+          "member_id",
+          parsed.data
+            .member_id
+        )
+        .is(
+          "voided_at",
+          null
+        )
+        .maybeSingle();
+
+      if (
+        duplicateAttendance
+      ) {
+        return {
+          success:
+            true,
+
+          status:
+            "already_checked_in",
+
+          attendanceRecordId:
+            duplicateAttendance.id,
+        };
+      }
+    }
+
+    console.error(
+      "Unable to sync offline attendance:",
+      attendanceError
+    );
+
+    return {
+      success: false,
+
+      code:
+        "sync_failed",
+
+      retryable:
+        true,
+
+      message:
+        "Offline attendance could not be synchronized.",
+    };
+  }
+
+  return {
+    success: true,
+
+    status:
+      "synced",
+
+    attendanceRecordId:
+      attendanceRecord.id,
+  };
 }
 
 async function loadAllActiveMembers(

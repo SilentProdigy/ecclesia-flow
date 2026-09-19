@@ -9,6 +9,10 @@ import {
 } from "./attendance-offline-bootstrap";
 
 import {
+  AttendanceOfflineSync,
+} from "./attendance-offline-sync";
+
+import {
   AttendanceRoster,
 } from "./attendance-roster";
 
@@ -50,6 +54,15 @@ export function AttendanceWorkspace({
       <AttendanceOfflineBootstrap
         sessionId={
           sessionId
+        }
+      />
+
+      <AttendanceOfflineSync
+        sessionId={
+          sessionId
+        }
+        onAttendanceChanged={
+          handleAttendanceChanged
         }
       />
 

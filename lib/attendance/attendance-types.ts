@@ -72,11 +72,15 @@ export interface ManualCheckInMember {
   member_no: number;
 
   first_name: string;
+
   middle_name:
     string | null;
+
   last_name: string;
+
   suffix:
     string | null;
+
   preferred_name:
     string | null;
 
@@ -97,6 +101,9 @@ export interface ManualCheckInMember {
 
   already_checked_in:
     boolean;
+
+  pending_sync?:
+    boolean;
 }
 
 export interface AttendanceRosterItem {
@@ -107,11 +114,15 @@ export interface AttendanceRosterItem {
   member_no: number;
 
   first_name: string;
+
   middle_name:
     string | null;
+
   last_name: string;
+
   suffix:
     string | null;
+
   preferred_name:
     string | null;
 

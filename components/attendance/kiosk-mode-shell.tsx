@@ -412,13 +412,12 @@ export function KioskModeShell({
               </p>
 
               <p className="mt-0.5 text-xs leading-5 text-amber-700">
-                Offline check-in
-                syncing will be
-                added in the next
-                Phase 5 steps.
-                Reconnect before
-                recording new
-                attendance for now.
+                Cached members can
+                still be checked in.
+                Attendance will be
+                stored on this device
+                and synchronized when
+                internet returns.
               </p>
             </div>
           </div>

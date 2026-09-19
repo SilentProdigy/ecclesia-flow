@@ -133,6 +133,41 @@ export const quickVisitorCheckInSchema =
       optionalVisitorEmailSchema,
   });
 
+export const offlineAttendanceSyncSchema =
+  z.object({
+    attendance_record_id:
+      z
+        .string()
+        .uuid(
+          "Invalid attendance record."
+        ),
+
+    event_session_id:
+      eventSessionIdSchema,
+
+    member_id:
+      z
+        .string()
+        .uuid(
+          "Invalid member."
+        ),
+
+    checked_in_at:
+      z
+        .string()
+        .trim()
+        .max(64)
+        .refine(
+          (value) =>
+            !Number.isNaN(
+              Date.parse(
+                value
+              )
+            ),
+          "Invalid check-in timestamp."
+        ),
+  });
+
 export const voidAttendanceSchema =
   z.object({
     attendance_record_id: z

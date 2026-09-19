@@ -110,3 +110,86 @@ export interface AttendanceCacheInfo {
   memberCount:
     number;
 }
+
+export type OfflineAttendanceOutboxStatus =
+  | "pending"
+  | "syncing"
+  | "failed";
+
+export interface OfflineAttendanceOutboxItem {
+  member_key: string;
+
+  type:
+    "member_check_in";
+
+  attendance_record_id:
+    string;
+
+  event_session_id:
+    string;
+
+  member_id:
+    string;
+
+  checked_in_at:
+    string;
+
+  member:
+    CachedAttendanceMember;
+
+  status:
+    OfflineAttendanceOutboxStatus;
+
+  attempts: number;
+
+  last_error:
+    string | null;
+
+  created_at:
+    string;
+
+  updated_at:
+    string;
+}
+
+export interface OfflineAttendanceSyncInput {
+  attendance_record_id:
+    string;
+
+  event_session_id:
+    string;
+
+  member_id:
+    string;
+
+  checked_in_at:
+    string;
+}
+
+export type OfflineAttendanceSyncResult =
+  | {
+      success: true;
+
+      status:
+        | "synced"
+        | "already_synced"
+        | "already_checked_in";
+
+      attendanceRecordId:
+        string;
+    }
+  | {
+      success: false;
+
+      code:
+        | "invalid"
+        | "unauthorized"
+        | "session_closed"
+        | "member_inactive"
+        | "sync_failed";
+
+      retryable:
+        boolean;
+
+      message: string;
+    };

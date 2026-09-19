@@ -6,6 +6,8 @@ import type {
   CachedAttendanceMember,
   CachedAttendanceSession,
   CachedMemberSearchResult,
+  OfflineAttendanceOutboxItem,
+  OfflineAttendanceOutboxStatus,
 } from "./offline-cache-types";
 
 import type {
@@ -15,7 +17,7 @@ import type {
 const DB_NAME =
   "ecclesia-flow-attendance";
 
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const MEMBER_STORE =
   "members";
@@ -28,6 +30,12 @@ const CHECKIN_STORE =
 
 const META_STORE =
   "meta";
+
+const OUTBOX_STORE =
+  "outbox";
+
+export const ATTENDANCE_OUTBOX_CHANGED_EVENT =
+  "ecclesia:attendance-outbox-changed";
 
 interface CachedCheckIn {
   key: string;
@@ -223,6 +231,40 @@ async function openAttendanceDb(): Promise<
               }
             );
           }
+
+          if (
+            !db.objectStoreNames
+              .contains(
+                OUTBOX_STORE
+              )
+          ) {
+            const outbox =
+              db.createObjectStore(
+                OUTBOX_STORE,
+                {
+                  keyPath:
+                    "member_key",
+                }
+              );
+
+            outbox.createIndex(
+              "session_id",
+              "event_session_id",
+              {
+                unique:
+                  false,
+              }
+            );
+
+            outbox.createIndex(
+              "status",
+              "status",
+              {
+                unique:
+                  false,
+              }
+            );
+          }
         };
 
       request.onsuccess =
@@ -253,6 +295,35 @@ function getCheckInKey(
   memberId: string
 ) {
   return `${sessionId}:${memberId}`;
+}
+
+function getOutboxMemberKey(
+  sessionId: string,
+  memberId: string
+) {
+  return `${sessionId}:${memberId}`;
+}
+
+export function dispatchAttendanceOutboxChanged(
+  sessionId: string
+) {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(
+      ATTENDANCE_OUTBOX_CHANGED_EVENT,
+      {
+        detail: {
+          sessionId,
+        },
+      }
+    )
+  );
 }
 
 export async function cacheAttendanceBootstrap(
@@ -320,12 +391,12 @@ export async function cacheAttendanceBootstrap(
     transaction
   );
 
+  db.close();
+
   await replaceCachedSessionCheckIns(
     payload.session.id,
     payload.checkedInMemberIds
   );
-
-  db.close();
 }
 
 export async function replaceCachedSessionCheckIns(
@@ -384,25 +455,19 @@ export async function replaceCachedSessionCheckIns(
             const memberId of
             memberIds
           ) {
-            const record:
-              CachedCheckIn =
-              {
-                key:
-                  getCheckInKey(
-                    sessionId,
-                    memberId
-                  ),
-
-                session_id:
+            store.put({
+              key:
+                getCheckInKey(
                   sessionId,
+                  memberId
+                ),
 
-                member_id:
-                  memberId,
-              };
+              session_id:
+                sessionId,
 
-            store.put(
-              record
-            );
+              member_id:
+                memberId,
+            } satisfies CachedCheckIn);
           }
         };
 
@@ -752,6 +817,391 @@ export async function getAttendanceCacheInfo(
   };
 }
 
+export async function queueOfflineAttendanceCheckIn({
+  sessionId,
+  member,
+}: {
+  sessionId: string;
+
+  member:
+    CachedAttendanceMember;
+}): Promise<OfflineAttendanceOutboxItem> {
+  const db =
+    await openAttendanceDb();
+
+  if (!db) {
+    throw new Error(
+      "IndexedDB is not available."
+    );
+  }
+
+  const memberKey =
+    getOutboxMemberKey(
+      sessionId,
+      member.id
+    );
+
+  const result =
+    await new Promise<
+      OfflineAttendanceOutboxItem
+    >(
+      (
+        resolve,
+        reject
+      ) => {
+        const transaction =
+          db.transaction(
+            OUTBOX_STORE,
+            "readwrite"
+          );
+
+        const store =
+          transaction.objectStore(
+            OUTBOX_STORE
+          );
+
+        const request =
+          store.get(
+            memberKey
+          );
+
+        let value:
+          OfflineAttendanceOutboxItem | null =
+          null;
+
+        request.onsuccess =
+          () => {
+            const existing =
+              request.result as
+                | OfflineAttendanceOutboxItem
+                | undefined;
+
+            if (
+              existing &&
+              existing.status !==
+                "failed"
+            ) {
+              value =
+                existing;
+
+              return;
+            }
+
+            const now =
+              new Date()
+                .toISOString();
+
+            value = {
+              member_key:
+                memberKey,
+
+              type:
+                "member_check_in",
+
+              attendance_record_id:
+                existing
+                  ?.attendance_record_id ??
+                crypto.randomUUID(),
+
+              event_session_id:
+                sessionId,
+
+              member_id:
+                member.id,
+
+              checked_in_at:
+                existing
+                  ?.checked_in_at ??
+                now,
+
+              member,
+
+              status:
+                "pending",
+
+              attempts:
+                existing
+                  ?.attempts ??
+                0,
+
+              last_error:
+                null,
+
+              created_at:
+                existing
+                  ?.created_at ??
+                now,
+
+              updated_at:
+                now,
+            };
+
+            store.put(
+              value
+            );
+          };
+
+        request.onerror =
+          () => {
+            reject(
+              request.error
+            );
+          };
+
+        transaction.oncomplete =
+          () => {
+            if (!value) {
+              reject(
+                new Error(
+                  "Unable to create offline attendance record."
+                )
+              );
+
+              return;
+            }
+
+            resolve(
+              value
+            );
+          };
+
+        transaction.onerror =
+          () => {
+            reject(
+              transaction.error
+            );
+          };
+
+        transaction.onabort =
+          () => {
+            reject(
+              transaction.error
+            );
+          };
+      }
+    );
+
+  db.close();
+
+  dispatchAttendanceOutboxChanged(
+    sessionId
+  );
+
+  return result;
+}
+
+export async function getOfflineAttendanceOutboxItems(
+  sessionId: string
+): Promise<
+  OfflineAttendanceOutboxItem[]
+> {
+  const db =
+    await openAttendanceDb();
+
+  if (!db) {
+    return [];
+  }
+
+  const transaction =
+    db.transaction(
+      OUTBOX_STORE,
+      "readonly"
+    );
+
+  const request =
+    transaction
+      .objectStore(
+        OUTBOX_STORE
+      )
+      .index(
+        "session_id"
+      )
+      .getAll(
+        sessionId
+      );
+
+  const items =
+    await requestToPromise<
+      OfflineAttendanceOutboxItem[]
+    >(
+      request
+    );
+
+  db.close();
+
+  return items.sort(
+    (
+      first,
+      second
+    ) =>
+      first.created_at.localeCompare(
+        second.created_at
+      )
+  );
+}
+
+export async function getQueuedOfflineMemberIds(
+  sessionId: string
+) {
+  const items =
+    await getOfflineAttendanceOutboxItems(
+      sessionId
+    );
+
+  return new Set(
+    items
+      .filter(
+        (item) =>
+          item.status ===
+            "pending" ||
+          item.status ===
+            "syncing"
+      )
+      .map(
+        (item) =>
+          item.member_id
+      )
+  );
+}
+
+export async function updateOfflineAttendanceOutboxItem(
+  memberKey: string,
+  {
+    status,
+    lastError,
+    incrementAttempts = false,
+  }: {
+    status:
+      OfflineAttendanceOutboxStatus;
+
+    lastError:
+      string | null;
+
+    incrementAttempts?:
+      boolean;
+  }
+) {
+  const db =
+    await openAttendanceDb();
+
+  if (!db) {
+    return;
+  }
+
+  await new Promise<void>(
+    (
+      resolve,
+      reject
+    ) => {
+      const transaction =
+        db.transaction(
+          OUTBOX_STORE,
+          "readwrite"
+        );
+
+      const store =
+        transaction.objectStore(
+          OUTBOX_STORE
+        );
+
+      const request =
+        store.get(
+          memberKey
+        );
+
+      request.onsuccess =
+        () => {
+          const existing =
+            request.result as
+              | OfflineAttendanceOutboxItem
+              | undefined;
+
+          if (!existing) {
+            return;
+          }
+
+          store.put({
+            ...existing,
+
+            status,
+
+            attempts:
+              incrementAttempts
+                ? existing.attempts +
+                  1
+                : existing.attempts,
+
+            last_error:
+              lastError,
+
+            updated_at:
+              new Date()
+                .toISOString(),
+          });
+        };
+
+      request.onerror =
+        () => {
+          reject(
+            request.error
+          );
+        };
+
+      transaction.oncomplete =
+        () => {
+          resolve();
+        };
+
+      transaction.onerror =
+        () => {
+          reject(
+            transaction.error
+          );
+        };
+
+      transaction.onabort =
+        () => {
+          reject(
+            transaction.error
+          );
+        };
+    }
+  );
+
+  db.close();
+}
+
+export async function removeOfflineAttendanceOutboxItem(
+  memberKey: string
+) {
+  const db =
+    await openAttendanceDb();
+
+  if (!db) {
+    return;
+  }
+
+  const transaction =
+    db.transaction(
+      OUTBOX_STORE,
+      "readwrite"
+    );
+
+  transaction
+    .objectStore(
+      OUTBOX_STORE
+    )
+    .delete(
+      memberKey
+    );
+
+  await transactionToPromise(
+    transaction
+  );
+
+  db.close();
+}
+
 export async function searchCachedAttendanceMembers(
   sessionId: string,
   query: string,
@@ -778,6 +1228,7 @@ export async function searchCachedAttendanceMembers(
         MEMBER_STORE,
         CHECKIN_STORE,
         META_STORE,
+        OUTBOX_STORE,
       ],
       "readonly"
     );
@@ -812,10 +1263,23 @@ export async function searchCachedAttendanceMembers(
         )
       );
 
+  const outboxRequest =
+    transaction
+      .objectStore(
+        OUTBOX_STORE
+      )
+      .index(
+        "session_id"
+      )
+      .getAll(
+        sessionId
+      );
+
   const [
     members,
     checkins,
     meta,
+    outbox,
   ] =
     await Promise.all([
       requestToPromise<
@@ -835,6 +1299,12 @@ export async function searchCachedAttendanceMembers(
       >(
         metaRequest
       ),
+
+      requestToPromise<
+        OfflineAttendanceOutboxItem[]
+      >(
+        outboxRequest
+      ),
     ]);
 
   db.close();
@@ -845,6 +1315,22 @@ export async function searchCachedAttendanceMembers(
         (record) =>
           record.member_id
       )
+    );
+
+  const queuedIds =
+    new Set(
+      outbox
+        .filter(
+          (item) =>
+            item.status ===
+              "pending" ||
+            item.status ===
+              "syncing"
+        )
+        .map(
+          (item) =>
+            item.member_id
+        )
     );
 
   const normalizedQuery =
@@ -862,17 +1348,28 @@ export async function searchCachedAttendanceMembers(
         limit
       )
       .map(
-        (member) => ({
-          ...member,
-
-          photo_url:
-            null,
-
-          already_checked_in:
-            checkedInIds.has(
+        (member) => {
+          const pendingSync =
+            queuedIds.has(
               member.id
-            ),
-        })
+            );
+
+          return {
+            ...member,
+
+            photo_url:
+              null,
+
+            already_checked_in:
+              checkedInIds.has(
+                member.id
+              ) ||
+              pendingSync,
+
+            pending_sync:
+              pendingSync,
+          };
+        }
       );
 
   return {

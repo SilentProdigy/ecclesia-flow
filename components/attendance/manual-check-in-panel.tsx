@@ -14,6 +14,7 @@ import {
   Check,
   CheckCircle2,
   CloudOff,
+  CloudUpload,
   LoaderCircle,
   Search,
   UserPlus,
@@ -33,7 +34,10 @@ import type {
 } from "@/lib/attendance";
 
 import {
+  ATTENDANCE_OUTBOX_CHANGED_EVENT,
   getAttendanceCacheInfo,
+  getQueuedOfflineMemberIds,
+  queueOfflineAttendanceCheckIn,
   searchCachedAttendanceMembers,
   setCachedMemberCheckedIn,
 } from "@/lib/attendance/attendance-offline-db";
@@ -165,53 +169,106 @@ export function ManualCheckInPanel({
     0;
 
   useEffect(() => {
-    function updateConnectionState() {
+    async function updateConnectionState() {
       setIsOnline(
         navigator.onLine
       );
 
-      void getAttendanceCacheInfo(
-        sessionId
-      ).then(
-        (info) => {
-          setCacheAvailable(
-            info.available
-          );
+      const info =
+        await getAttendanceCacheInfo(
+          sessionId
+        );
 
-          setCacheMemberCount(
-            info.memberCount
-          );
-        }
+      setCacheAvailable(
+        info.available
+      );
+
+      setCacheMemberCount(
+        info.memberCount
       );
     }
 
-    updateConnectionState();
+    void updateConnectionState();
+
+    function handleOnline() {
+      void updateConnectionState();
+
+      setRefreshVersion(
+        (current) =>
+          current + 1
+      );
+    }
+
+    function handleOffline() {
+      void updateConnectionState();
+
+      setRefreshVersion(
+        (current) =>
+          current + 1
+      );
+    }
+
+    function handleOutboxChange(
+      event: Event
+    ) {
+      const customEvent =
+        event as CustomEvent<{
+          sessionId?: string;
+        }>;
+
+      if (
+        customEvent.detail
+          ?.sessionId &&
+        customEvent.detail
+          .sessionId !==
+          sessionId
+      ) {
+        return;
+      }
+
+      setRefreshVersion(
+        (current) =>
+          current + 1
+      );
+    }
 
     window.addEventListener(
       "online",
-      updateConnectionState
+      handleOnline
     );
 
     window.addEventListener(
       "offline",
-      updateConnectionState
+      handleOffline
+    );
+
+    window.addEventListener(
+      ATTENDANCE_OUTBOX_CHANGED_EVENT,
+      handleOutboxChange
     );
 
     const interval =
       window.setInterval(
-        updateConnectionState,
+        () => {
+          void updateConnectionState();
+        },
         30_000
       );
 
     return () => {
       window.removeEventListener(
         "online",
-        updateConnectionState
+        handleOnline
       );
 
       window.removeEventListener(
         "offline",
-        updateConnectionState
+        handleOffline
+      );
+
+      window.removeEventListener(
+        ATTENDANCE_OUTBOX_CHANGED_EVENT,
+        handleOutboxChange
       );
 
       window.clearInterval(
@@ -282,10 +339,6 @@ export function ManualCheckInPanel({
                 "cache"
               );
 
-              setIsSearching(
-                false
-              );
-
               return;
             }
 
@@ -310,16 +363,46 @@ export function ManualCheckInPanel({
             if (
               result.success
             ) {
+              const queuedIds =
+                await getQueuedOfflineMemberIds(
+                  sessionId
+                );
+
+              if (
+                cancelled ||
+                requestId !==
+                  requestIdRef
+                    .current
+              ) {
+                return;
+              }
+
               setMembers(
-                result.members
+                result.members.map(
+                  (
+                    member
+                  ) => {
+                    const pendingSync =
+                      queuedIds.has(
+                        member.id
+                      );
+
+                    return {
+                      ...member,
+
+                      already_checked_in:
+                        member.already_checked_in ||
+                        pendingSync,
+
+                      pending_sync:
+                        pendingSync,
+                    };
+                  }
+                )
               );
 
               setSearchSource(
                 "online"
-              );
-
-              setIsSearching(
-                false
               );
 
               return;
@@ -444,10 +527,138 @@ export function ManualCheckInPanel({
       ManualCheckInMember
   ) {
     if (
-      !isOnline ||
       member.already_checked_in ||
       pendingMemberId
     ) {
+      return;
+    }
+
+    if (
+      !navigator.onLine
+    ) {
+      if (
+        !cacheAvailable
+      ) {
+        setFeedback({
+          type:
+            "error",
+
+          message:
+            "Offline attendance is unavailable because this device does not have a member cache yet.",
+        });
+
+        return;
+      }
+
+      setPendingMemberId(
+        member.id
+      );
+
+      setFeedback(
+        null
+      );
+
+      try {
+        await queueOfflineAttendanceCheckIn({
+          sessionId,
+
+          member: {
+            id:
+              member.id,
+
+            member_no:
+              member.member_no,
+
+            first_name:
+              member.first_name,
+
+            middle_name:
+              member.middle_name,
+
+            last_name:
+              member.last_name,
+
+            suffix:
+              member.suffix,
+
+            preferred_name:
+              member.preferred_name,
+
+            phone:
+              member.phone,
+
+            email:
+              member.email,
+
+            member_type:
+              member.member_type,
+
+            photo_path:
+              member.photo_path,
+          },
+        });
+
+        await setCachedMemberCheckedIn(
+          sessionId,
+          member.id,
+          true
+        );
+
+        setMembers(
+          (current) =>
+            current.map(
+              (item) =>
+                item.id ===
+                member.id
+                  ? {
+                      ...item,
+
+                      already_checked_in:
+                        true,
+
+                      pending_sync:
+                        true,
+                    }
+                  : item
+            )
+        );
+
+        const displayName =
+          [
+            member.first_name,
+            member.middle_name,
+            member.last_name,
+            member.suffix,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+        setFeedback({
+          type:
+            "success",
+
+          message:
+            `${displayName} checked in offline. Attendance will sync automatically when the connection returns.`,
+        });
+      } catch (error) {
+        console.error(
+          "Unable to queue offline attendance:",
+          error
+        );
+
+        setFeedback({
+          type:
+            "error",
+
+          message:
+            "Offline attendance could not be saved on this device.",
+        });
+      } finally {
+        setPendingMemberId(
+          null
+        );
+      }
+
       return;
     }
 
@@ -505,6 +716,9 @@ export function ManualCheckInPanel({
 
                   already_checked_in:
                     true,
+
+                  pending_sync:
+                    false,
                 }
               : item
         )
@@ -638,14 +852,14 @@ export function ManualCheckInPanel({
             <div>
               <p className="text-xs font-semibold text-amber-900">
                 {cacheAvailable
-                  ? "Offline member search is available"
-                  : "No offline member cache is available"}
+                  ? "Offline attendance is available"
+                  : "No offline attendance cache is available"}
               </p>
 
               <p className="mt-1 text-xs leading-5 text-amber-700">
                 {cacheAvailable
-                  ? `${cacheMemberCount} active people are cached on this device. Offline check-in syncing will be enabled in #51.`
-                  : "Reconnect to the internet once so Ecclesia Flow can cache the active member directory."}
+                  ? `${cacheMemberCount} active people are cached. Check-ins will be stored on this device and synchronized automatically when internet returns.`
+                  : "Reconnect once so Ecclesia Flow can cache the active member directory."}
               </p>
             </div>
           </div>
@@ -840,7 +1054,8 @@ export function ManualCheckInPanel({
                           Boolean(
                             pendingMemberId
                           ) ||
-                          !isOnline
+                          (!isOnline &&
+                            !cacheAvailable)
                         }
                         offline={
                           !isOnline
@@ -970,19 +1185,19 @@ function MemberCheckInRow({
         </div>
       </div>
 
-      {member.already_checked_in ? (
+      {member.pending_sync ? (
+        <div className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-amber-50 px-3 text-[10px] font-semibold text-amber-700">
+          <CloudUpload
+            size={14}
+          />
+
+          Queued
+        </div>
+      ) : member.already_checked_in ? (
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
           <Check
             size={17}
           />
-        </div>
-      ) : offline ? (
-        <div className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-[10px] font-semibold text-slate-500">
-          <WifiOff
-            size={13}
-          />
-
-          Offline
         </div>
       ) : (
         <button
@@ -993,7 +1208,7 @@ function MemberCheckInRow({
           disabled={
             disabled
           }
-          className="flex h-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {isPending ? (
             <LoaderCircle
@@ -1001,7 +1216,15 @@ function MemberCheckInRow({
               className="animate-spin"
             />
           ) : (
-            "Check In"
+            <>
+              {offline && (
+                <CloudOff
+                  size={14}
+                />
+              )}
+
+              Check In
+            </>
           )}
         </button>
       )}
